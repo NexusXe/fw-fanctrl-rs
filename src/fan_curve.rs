@@ -2,7 +2,12 @@
 #![allow(clippy::too_many_lines)]
 
 const MINIMUM_FAN_SPEED: u8 = 10;
-const NUM_VALID_TEMPS: usize = 256 - 4;
+
+// (Temperature, Fan Speed)
+const START_POINT: (u8, u8) = (25, MINIMUM_FAN_SPEED);
+const END_POINT: (u8, u8) = (85, 100);
+
+const NUM_LUT_ENTRIES: usize = (END_POINT.0 - START_POINT.0 + 1) as usize;
 
 const fn abs(x: i64) -> i64 {
     if x < 0 { -x } else { x }
@@ -57,7 +62,7 @@ pub const fn generate_fan_curve_lut<const N: usize>(
     start: (u8, u8),
     end: (u8, u8),
     intermediates: &[(u8, u8); N],
-) -> [u8; NUM_VALID_TEMPS]
+) -> [u8; NUM_LUT_ENTRIES]
 where
     [(); N + 2]:,
 {
@@ -142,96 +147,93 @@ where
         i += 1;
     }
 
-    let mut lut = [0u8; NUM_VALID_TEMPS];
-    let mut x_int = 0usize;
+    let mut lut = [0u8; NUM_LUT_ENTRIES];
+    let mut lut_idx = 0usize;
 
-    while x_int < NUM_VALID_TEMPS {
+    // x traverses from `shifted_start.0` to `shifted_end.0`
+    let mut x_int = shifted_start.0 as usize;
+
+    while x_int <= shifted_end.0 as usize {
         let x = x_int as u8;
 
-        if x < shifted_start.0 {
-            lut[x_int] = MINIMUM_FAN_SPEED; // Clamped to 0 below shifted start.x
-        } else if x > shifted_end.0 {
-            lut[x_int] = 100; // Clamped to 100 above shifted end.x
-        } else {
-            // Find the segment enclosing `x`
-            let mut seg = 0;
-            while seg <= N {
-                let p_seg = get_pt(start, end, intermediates, seg);
-                let p_next = get_pt(start, end, intermediates, seg + 1);
-                if x >= p_seg.0 && x <= p_next.0 {
-                    break;
-                }
-                seg += 1;
+        // Find the segment enclosing `x`
+        let mut seg = 0;
+        while seg <= N {
+            let p_seg = get_pt(start, end, intermediates, seg);
+            let p_next = get_pt(start, end, intermediates, seg + 1);
+            if x >= p_seg.0 && x <= p_next.0 {
+                break;
             }
-
-            let p0 = get_pt(start, end, intermediates, seg);
-            let p1 = get_pt(start, end, intermediates, seg + 1);
-
-            if x == p0.0 {
-                lut[x_int] = p0.1;
-            } else if x == p1.0 {
-                lut[x_int] = p1.1;
-            } else {
-                let m0 = tangents[seg];
-                let m1 = tangents[seg + 1];
-                let dx = (p1.0 - p0.0) as i64;
-
-                // Relative position t in 16.16 fixed-point
-                let t = ((x as i64 - p0.0 as i64) << 16) / dx;
-                let t2 = (t * t) >> 16;
-                let t3 = (t2 * t) >> 16;
-
-                let one = 1i64 << 16;
-
-                // Cubic Hermite basis functions
-                let h00 = 2 * t3 - 3 * t2 + one;
-                let h10 = t3 - 2 * t2 + t;
-                let h01 = -2 * t3 + 3 * t2;
-                let h11 = t3 - t2;
-
-                let y0 = p0.1 as i64;
-                let y1 = p1.1 as i64;
-
-                // Adjust tangents against interval delta
-                let m0_t = m0 * dx;
-                let m1_t = m1 * dx;
-
-                // Evaluate the polynomial
-                let mut y_fp = h00 * y0 + h01 * y1;
-                y_fp += (h10 * m0_t) >> 16;
-                y_fp += (h11 * m1_t) >> 16;
-
-                // Extract and round to nearest integer
-                let mut y = (y_fp + (1 << 15)) >> 16;
-
-                // Guaranteed safeguard 0..=100 bound clamp
-                if y < 0 {
-                    y = 0;
-                } else if y > 100 {
-                    y = 100;
-                }
-
-                lut[x_int] = y as u8;
-            }
+            seg += 1;
         }
+
+        let p0 = get_pt(start, end, intermediates, seg);
+        let p1 = get_pt(start, end, intermediates, seg + 1);
+
+        if x == p0.0 {
+            lut[lut_idx] = p0.1;
+        } else if x == p1.0 {
+            lut[lut_idx] = p1.1;
+        } else {
+            let m0 = tangents[seg];
+            let m1 = tangents[seg + 1];
+            let dx = (p1.0 - p0.0) as i64;
+
+            // Relative position t in 16.16 fixed-point
+            let t = ((x as i64 - p0.0 as i64) << 16) / dx;
+            let t2 = (t * t) >> 16;
+            let t3 = (t2 * t) >> 16;
+
+            let one = 1i64 << 16;
+
+            // Cubic Hermite basis functions
+            let h00 = 2 * t3 - 3 * t2 + one;
+            let h10 = t3 - 2 * t2 + t;
+            let h01 = -2 * t3 + 3 * t2;
+            let h11 = t3 - t2;
+
+            let y0 = p0.1 as i64;
+            let y1 = p1.1 as i64;
+
+            // Adjust tangents against interval delta
+            let m0_t = m0 * dx;
+            let m1_t = m1 * dx;
+
+            // Evaluate the polynomial
+            let mut y_fp = h00 * y0 + h01 * y1;
+            y_fp += (h10 * m0_t) >> 16;
+            y_fp += (h11 * m1_t) >> 16;
+
+            // Extract and round to nearest integer
+            let mut y = (y_fp + (1 << 15)) >> 16;
+
+            // Guaranteed safeguard 0..=100 bound clamp
+            if y < 0 {
+                y = 0;
+            } else if y > 100 {
+                y = 100;
+            }
+
+            lut[lut_idx] = y as u8;
+        }
+
         x_int += 1;
+        lut_idx += 1;
     }
 
     lut
 }
 
-// (Temperature, Fan Speed)
-const START_POINT: (u8, u8) = (25, MINIMUM_FAN_SPEED);
-const END_POINT: (u8, u8) = (85, 100);
-
 // Intermediate control points. (Must be strictly increasing in X).
 const INTERMEDIATE_POINTS: [(u8, u8); 4] = [(30, 15), (45, 30), (60, 50), (75, 80)];
 
 // Generate the fully smoothed LUT at compile-time
-pub const FAN_LUT: [u8; NUM_VALID_TEMPS] =
+pub const FAN_LUT: [u8; NUM_LUT_ENTRIES] =
     generate_fan_curve_lut(START_POINT, END_POINT, &INTERMEDIATE_POINTS);
 
-pub fn get_fan_speed(temp: u8) -> u8 {
-    // dbg!(temp, temp.clamp(START_POINT.0, END_POINT.0));
-    FAN_LUT[temp.clamp(START_POINT.0 + 73, END_POINT.0 + 73) as usize]
+pub const fn get_fan_speed(temp: u8) -> u8 {
+    const START: u8 = START_POINT.0 + 73;
+    const END: u8 = END_POINT.0 + 73;
+    let index = (temp.clamp(START, END) - START) as usize;
+    FAN_LUT[index]
 }
