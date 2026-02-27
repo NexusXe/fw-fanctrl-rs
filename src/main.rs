@@ -2,6 +2,8 @@
 #![feature(generic_const_exprs)]
 #![feature(const_cmp)]
 #![feature(const_trait_impl)]
+#![feature(const_convert)]
+#![feature(const_default)]
 #![allow(incomplete_features)]
 #![warn(clippy::pedantic)]
 #![allow(clippy::cast_possible_truncation)]

@@ -1,74 +1,50 @@
 #![allow(clippy::cast_sign_loss)]
 #![allow(clippy::too_many_lines)]
 
-const fn abs(x: i64) -> i64 {
-    if x < 0 { -x } else { x }
-}
+use crate::temp::EcTemp;
 
-/// Sign helper for const fn
-const fn sign(x: i64) -> i64 {
-    if x < 0 {
-        -1
-    } else if x > 0 {
-        1
-    } else {
-        0
-    }
-}
-
-const fn get_pt<const N: usize>(
-    start: (u8, u8),
-    end: (u8, u8),
-    intermediates: &[(u8, u8); N],
-    i: usize,
-) -> (u8, u8) {
-    let mut pt = if i == 0 {
-        start
-    } else if i == N + 1 {
-        end
-    } else {
-        intermediates[i - 1]
-    };
+const fn get_pt<const N: usize>(points: &[(u8, u8); N], i: usize) -> (u8, u8) {
+    let mut pt = points[i];
     pt.0 =
         pt.0.saturating_add((273 - crate::temp::EC_TEMP_SENSOR_OFFSET) as u8);
     pt
 }
 
-/// Computes the slope (secant) between two points in 16.16 fixed-point format
-const fn slope(p1: (u8, u8), p2: (u8, u8)) -> i64 {
+pub type FanCurveFloat = f64;
+
+const fn slope(p1: (u8, u8), p2: (u8, u8)) -> FanCurveFloat {
     if p2.0 == p1.0 {
-        return 0; // Prevent divide by zero (should be blocked by validation)
+        return 0.0; // Prevent divide by zero (should be blocked by validation)
     }
-    let dy = (p2.1 as i64) - (p1.1 as i64);
-    let dx = (p2.0 as i64) - (p1.0 as i64);
-    (dy << 16) / dx
+    let dy = FanCurveFloat::from(p2.1) - FanCurveFloat::from(p1.1);
+    let dx = FanCurveFloat::from(p2.0) - FanCurveFloat::from(p1.0);
+    dy / dx
 }
 
-/// Generates a perfectly smoothed, overshoot-free spline fan curve lookup table at compile time.
+/// Generates a perfectly smoothed, overshoot-free spline fan curve lookup table.
 ///
 /// # Arguments
-/// * `start` - The (x, y) start point of the curve. Inputs below `x` clamp to `0`.
-/// * `end` - The (x, y) end point of the curve. Inputs above `x` clamp to `100`.
-/// * `intermediates` - An array of arbitrary interior points.
+/// * `points` - An array of (`temp`, `fan_speed`) points defining the curve, in strictly
+///   increasing temperature order. The first and last points are the saturation limits.
 pub const fn generate_fan_curve_lut<const N: usize, const LUT_SIZE: usize>(
-    start: (u8, u8),
-    end: (u8, u8),
-    intermediates: &[(u8, u8); N],
+    points: &[(u8, u8); N],
 ) -> [u8; LUT_SIZE]
 where
-    [(); N + 2]:,
+    [(); N]:,
 {
+    assert!(N >= 2, "At least two points (start and end) are required");
+
     // 1. Validate Inputs (using shifted values)
-    let shifted_start = get_pt(start, end, intermediates, 0);
-    let shifted_end = get_pt(start, end, intermediates, N + 1);
+    let shifted_start = get_pt(points, 0);
+    let shifted_end = get_pt(points, N - 1);
 
     assert!(shifted_start.1 <= 100, "Start Y must be <= 100");
     assert!(shifted_end.1 <= 100, "End Y must be <= 100");
 
     let mut i = 1;
     let mut last_x = shifted_start.0;
-    while i <= N {
-        let pt = get_pt(start, end, intermediates, i);
+    while i < N {
+        let pt = get_pt(points, i);
         assert!(pt.1 <= 100, "Intermediate Y must be <= 100");
         assert!(
             pt.0 > last_x,
@@ -77,76 +53,56 @@ where
         last_x = pt.0;
         i += 1;
     }
-    assert!(
-        shifted_end.0 > last_x,
-        "End X must be strictly greater than last intermediate X"
-    );
 
     // 2. Compute Initial Tangents for Cubic Spline
-    // We now use generic_const_exprs to size tangents perfectly to N + 2
-    let mut tangents = [0i64; N + 2];
+    let mut tangents: [FanCurveFloat; N] = [0.0; N];
 
-    tangents[0] = slope(
-        get_pt(start, end, intermediates, 0),
-        get_pt(start, end, intermediates, 1),
-    );
-    tangents[N + 1] = slope(
-        get_pt(start, end, intermediates, N),
-        get_pt(start, end, intermediates, N + 1),
-    );
+    tangents[0] = slope(get_pt(points, 0), get_pt(points, 1));
+    tangents[N - 1] = slope(get_pt(points, N - 2), get_pt(points, N - 1));
 
     let mut i = 1;
-    while i <= N {
-        let s1 = slope(
-            get_pt(start, end, intermediates, i - 1),
-            get_pt(start, end, intermediates, i),
-        );
-        let s2 = slope(
-            get_pt(start, end, intermediates, i),
-            get_pt(start, end, intermediates, i + 1),
-        );
-        tangents[i] = i64::midpoint(s1, s2); // Average contiguous slopes
+    while i < N - 1 {
+        let s1 = slope(get_pt(points, i - 1), get_pt(points, i));
+        let s2 = slope(get_pt(points, i), get_pt(points, i + 1));
+        tangents[i] = (s1 + s2) * 0.5; // Average contiguous slopes
         i += 1;
     }
 
     // 3. Apply Fritsch-Carlson Monotonicity Constraints
-    // This perfectly prevents the curve from overshooting or undershooting between points.
     let mut i = 0;
-    while i <= N {
-        let p_i = get_pt(start, end, intermediates, i);
-        let p_next = get_pt(start, end, intermediates, i + 1);
+    while i < N - 1 {
+        let p_i = get_pt(points, i);
+        let p_next = get_pt(points, i + 1);
         let s = slope(p_i, p_next);
-        let s_sign = sign(s);
-        let max_t = 3 * abs(s);
+        let max_t = 3.0 * s.abs();
 
-        if s == 0 {
-            tangents[i] = 0;
-            tangents[i + 1] = 0;
+        if s == 0.0 {
+            tangents[i] = 0.0;
+            tangents[i + 1] = 0.0;
         } else {
             // Constrain left tangent
-            if sign(tangents[i]) != s_sign {
-                tangents[i] = 0;
-            } else if abs(tangents[i]) > max_t {
-                tangents[i] = s_sign * max_t;
+            if tangents[i].signum() != s.signum() {
+                tangents[i] = 0.0;
+            } else if tangents[i].abs() > max_t {
+                tangents[i] = s.signum() * max_t;
             }
             // Constrain right tangent
-            if sign(tangents[i + 1]) != s_sign {
-                tangents[i + 1] = 0;
-            } else if abs(tangents[i + 1]) > max_t {
-                tangents[i + 1] = s_sign * max_t;
+            if tangents[i + 1].signum() != s.signum() {
+                tangents[i + 1] = 0.0;
+            } else if tangents[i + 1].abs() > max_t {
+                tangents[i + 1] = s.signum() * max_t;
             }
         }
         i += 1;
     }
 
     assert!(
-        LUT_SIZE == (end.0 - start.0 + 1) as usize,
+        LUT_SIZE == (points[N - 1].0 - points[0].0 + 1) as usize,
         "LUT_SIZE must match the X range"
     );
     let mut lut = [0u8; LUT_SIZE];
     let mut lut_idx = 0usize;
 
-    // x traverses from `shifted_start.0` to `shifted_end.0`
     let mut x_int = shifted_start.0 as usize;
 
     while x_int <= shifted_end.0 as usize {
@@ -154,17 +110,17 @@ where
 
         // Find the segment enclosing `x`
         let mut seg = 0;
-        while seg <= N {
-            let p_seg = get_pt(start, end, intermediates, seg);
-            let p_next = get_pt(start, end, intermediates, seg + 1);
+        while seg < N - 1 {
+            let p_seg = get_pt(points, seg);
+            let p_next = get_pt(points, seg + 1);
             if x >= p_seg.0 && x <= p_next.0 {
                 break;
             }
             seg += 1;
         }
 
-        let p0 = get_pt(start, end, intermediates, seg);
-        let p1 = get_pt(start, end, intermediates, seg + 1);
+        let p0 = get_pt(points, seg);
+        let p1 = get_pt(points, seg + 1);
 
         if x == p0.0 {
             lut[lut_idx] = p0.1;
@@ -173,44 +129,28 @@ where
         } else {
             let m0 = tangents[seg];
             let m1 = tangents[seg + 1];
-            let dx = (p1.0 - p0.0) as i64;
+            let dx = FanCurveFloat::from(p1.0 - p0.0);
 
-            // Relative position t in 16.16 fixed-point
-            let t = ((x as i64 - p0.0 as i64) << 16) / dx;
-            let t2 = (t * t) >> 16;
-            let t3 = (t2 * t) >> 16;
-
-            let one = 1i64 << 16;
+            // Relative position t in [0, 1]
+            let t = (FanCurveFloat::from(x) - FanCurveFloat::from(p0.0)) / dx;
+            let t2 = t * t;
+            let t3 = t2 * t;
 
             // Cubic Hermite basis functions
-            let h00 = 2 * t3 - 3 * t2 + one;
-            let h10 = t3 - 2 * t2 + t;
-            let h01 = -2 * t3 + 3 * t2;
+            let h00 = 2.0 * t3 - 3.0 * t2 + 1.0;
+            let h10 = t3 - 2.0 * t2 + t;
+            let h01 = -2.0 * t3 + 3.0 * t2;
             let h11 = t3 - t2;
 
-            let y0 = p0.1 as i64;
-            let y1 = p1.1 as i64;
+            let y0 = FanCurveFloat::from(p0.1);
+            let y1 = FanCurveFloat::from(p1.1);
 
-            // Adjust tangents against interval delta
-            let m0_t = m0 * dx;
-            let m1_t = m1 * dx;
+            // Evaluate the polynomial (tangents are scaled by dx to match Hermite convention)
+            let y_f = h00 * y0 + h01 * y1 + h10 * m0 * dx + h11 * m1 * dx;
 
-            // Evaluate the polynomial
-            let mut y_fp = h00 * y0 + h01 * y1;
-            y_fp += (h10 * m0_t) >> 16;
-            y_fp += (h11 * m1_t) >> 16;
-
-            // Extract and round to nearest integer
-            let mut y = (y_fp + (1 << 15)) >> 16;
-
-            // Guaranteed safeguard 0..=100 bound clamp
-            if y < 0 {
-                y = 0;
-            } else if y > 100 {
-                y = 100;
-            }
-
-            lut[lut_idx] = y as u8;
+            // Round to nearest integer and clamp to 0..=100
+            let y = y_f.round().clamp(0.0, 100.0) as u8;
+            lut[lut_idx] = y;
         }
 
         x_int += 1;
@@ -238,16 +178,28 @@ impl FanProfile {
 }
 
 macro_rules! define_profile {
-    ($prof_ident:ident, $name_str:literal, $start:expr, $end:expr, $intermediates:expr) => {
+    ($prof_ident:ident, $name_str:literal, $points:expr) => {
         pub const $prof_ident: FanProfile = FanProfile {
             name: $name_str,
-            start: $start.0,
-            end: $end.0,
+            start: $points[0].0,
+            end: $points[$points.len() - 1].0,
             lut: &{
-                const S: (u8, u8) = $start;
-                const E: (u8, u8) = $end;
-                const LUT: [u8; (E.0 - S.0 + 1) as usize] =
-                    generate_fan_curve_lut(S, E, &$intermediates);
+                const PTS: &[(u8, u8)] = &$points;
+                const N: usize = PTS.len();
+                const LUT_SIZE: usize = (PTS[N - 1].0 - PTS[0].0 + 1) as usize;
+                const LUT: [u8; LUT_SIZE] = generate_fan_curve_lut(&{
+                    // Re-express as a fixed-size array for the const fn
+                    const fn to_array<const M: usize>(s: &[(u8, u8)]) -> [(u8, u8); M] {
+                        let mut arr = [(0u8, 0u8); M];
+                        let mut i = 0;
+                        while i < M {
+                            arr[i] = s[i];
+                            i += 1;
+                        }
+                        arr
+                    }
+                    to_array::<N>(PTS)
+                });
                 LUT
             },
         };
@@ -257,76 +209,62 @@ macro_rules! define_profile {
 define_profile!(
     FW_LAZIEST,
     "fw-laziest",
-    (45, 0),
-    (85, 100),
-    [(65, 25), (70, 35), (75, 50)]
+    [(45, 0), (65, 25), (70, 35), (75, 50), (85, 100)]
 );
 
 define_profile!(
     FW_LAZY,
     "fw-lazy",
-    (50, 15),
-    (85, 100),
-    [(65, 25), (70, 35), (75, 50)]
+    [(50, 15), (65, 25), (70, 35), (75, 50), (85, 100)]
 );
 
 define_profile!(
     FW_MEDIUM,
     "fw-medium",
-    (40, 15),
-    (85, 100),
-    [(60, 30), (70, 40), (75, 80)]
+    [(40, 15), (60, 30), (70, 40), (75, 80), (85, 100)]
 );
 
-define_profile!(FW_DEAF, "fw-deaf", (0, 20), (60, 100), [(40, 30), (50, 50)]);
+define_profile!(FW_DEAF, "fw-deaf", [(0, 20), (40, 30), (50, 50), (60, 100)]);
 
-define_profile!(FW_AEOLUS, "fw-aeolus", (0, 20), (60, 100), [(40, 50)]);
+define_profile!(FW_AEOLUS, "fw-aeolus", [(0, 20), (40, 50), (60, 100)]);
 
 define_profile!(
     DEFAULT_PROFILE,
     "default",
-    (25, 10),
-    (85, 100),
-    [(30, 15), (45, 30), (60, 50), (75, 80)]
+    [(25, 10), (30, 15), (45, 30), (60, 50), (75, 80), (85, 100)]
 );
 
 define_profile!(
     QUIET_PROFILE,
     "quiet",
-    (30, 10),
-    (92, 100),
     [
+        (30, 10),
         (35, 15),
         (50, 25),
         (65, 40),
         (80, 60),
         (85, 80),
         (90, 90),
+        (92, 100),
     ]
 );
 
 define_profile!(
     PERFORMANCE_PROFILE,
     "performance",
-    (25, 15),
-    (80, 100),
-    [(35, 30), (50, 50), (65, 75)]
+    [(25, 15), (35, 30), (50, 50), (65, 75), (80, 100)]
 );
 
 define_profile!(
     TURBO_PROFILE,
     "turbo",
-    (25, 25),
-    (70, 100),
-    [(30, 35), (45, 50), (60, 75)]
+    [(25, 25), (30, 35), (45, 50), (60, 75), (70, 100)]
 );
 
 define_profile!(
     DEAF_PROFILE,
     "deaf",
-    (25, 35),
-    (65, 100),
-    [(30, 40), (45, 50), (60, 75)]
+    [(25, 35), (30, 40), (45, 50), (60, 75), (65, 100)]
 );
 
 pub const PROFILES: &[FanProfile] = &[
