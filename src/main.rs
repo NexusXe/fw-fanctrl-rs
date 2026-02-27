@@ -1,93 +1,129 @@
 #![feature(default_field_values)]
 #![feature(generic_const_exprs)]
+#![feature(const_cmp)]
+#![feature(const_trait_impl)]
 #![allow(incomplete_features)]
 #![warn(clippy::pedantic)]
 #![allow(clippy::cast_possible_truncation)]
 
 pub(crate) mod common;
+mod fan_curve;
 mod fans;
 mod temp;
-mod fan_curve;
+
+use clap::Parser;
+
+#[derive(Parser, Debug)]
+#[command(version, about, long_about = None)]
+#[allow(clippy::struct_excessive_bools)]
+struct Args {
+    /// List temperatures
+    #[arg(short = 't', long)]
+    temp: bool,
+
+    /// Set fan speeds (0-100 or 'auto'). If passed without a value, defaults to 'auto'.
+    #[arg(short = 'f', long, value_name = "SPEED", num_args = 0..=1, default_missing_value = "auto")]
+    fan: Option<String>,
+
+    /// Run as daemon
+    #[arg(short = 'd', long, conflicts_with = "once")]
+    daemon: bool,
+
+    /// Check temps and set fans to match curve once
+    #[arg(short = 'o', long)]
+    once: bool,
+
+    /// Print fan curve in CSV format
+    #[arg(short = 'c', long)]
+    curve: bool,
+
+    /// Generate shell completions
+    #[arg(long, value_enum)]
+    print_completions: Option<clap_complete::Shell>,
+}
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut args = std::env::args();
-    if let Some(arg) = args.nth(1) {
-        match arg.as_str() {
-            "fans" => {
-                if let Some(val) = args.next() {
-                    let duty: u8 = val.parse::<u8>()?.clamp(0, 100);
-                    fans::set_duty(duty)?;
-                    println!("Set to {duty:}");
-                } else {
-                    fans::set_auto()?;
-                    println!("Set auto fan control.");
-                }
-            }
+    use clap::CommandFactory;
+    let args = Args::parse();
 
-            "temp" => {
-                let temps = temp::get_temperatures()?;
-                let max_temp_idx = temps.iter().enumerate().max_by_key(|&(_, &t)| t).unwrap().0;
-                println!("--- Thermal Readings ---");
-                for (i, t) in temps.iter().enumerate() {
-                    match t {
-                        0xFF => println!("Sensor {i}: Not present"),
-                        0xFE => println!("Sensor {i}: Error"),
-                        0xFD => println!("Sensor {i}: Not powered"),
-                        0xFC => println!("Sensor {i}: Not calibrated"),
-                        val => {
-                            //let celsius = i32::from(val) + 200 - 273;
-                            println!(
-                                "Sensor {i}: {:}°C ({val:}, 0b{val:08b}){}",
-                                val - 73,
-                                if i == max_temp_idx { "*" } else { "" }
-                            );
-                        }
-                    }
-                }
-            }
+    if let Some(shell) = args.print_completions {
+        let mut cmd = Args::command();
+        clap_complete::generate(shell, &mut cmd, "fw-fanctrl-rs", &mut std::io::stdout());
+        return Ok(());
+    }
 
-            "dwell" => {
-                // check temps and set fans to match curve
-                let max_temp = temp::get_max_temp()?;
-                let speed = fan_curve::FAN_LUT[max_temp as usize];
-                fans::set_duty(speed)?;
-                println!("{:}°C: {speed:3}%", max_temp - 73);
-            }
-
-            "daemon" => {
-                use std::sync::atomic::{AtomicBool, Ordering};
-                use std::sync::Arc;
-
-                let running = Arc::new(AtomicBool::new(true));
-                let r = running.clone();
-                ctrlc::set_handler(move || {
-                    r.store(false, Ordering::SeqCst);
-                }).expect("Error setting Ctrl-C handler");
-
-                while running.load(Ordering::SeqCst) {
-                    let max_temp = temp::get_max_temp()?;
-                    let speed = fan_curve::FAN_LUT[max_temp as usize];
-                    fans::set_duty(speed)?;
-                    std::thread::sleep(std::time::Duration::from_secs(1));
-                }
-
-                // Cleanup
-                fans::set_auto()?;
-                println!("Set auto fan control.");
-            }
-
-            _ => {
-                // for (temp, speed) in fan_curve::FAN_LUT.iter().enumerate() {
-                //     let temp = (temp as i64 - 273) + i64::from(temp::EC_TEMP_SENSOR_OFFSET);
-                //     println!("{temp:3}°C ({:3}F): {speed:3}%", temp * 9 / 5 + 32);
-                // }
-                // return Ok(());
-                println!("Temperature,PWM");
-                for temp in 0..=u8::MAX {
-                    println!("{:},{:}", i16::from(temp) - 73, fan_curve::FAN_LUT[temp as usize]);
+    if args.temp {
+        let temps = temp::get_temperatures()?;
+        let max_temp_idx = temps.iter().enumerate().max_by_key(|&(_, &t)| t).unwrap().0;
+        println!("--- Thermal Readings ---");
+        for (i, t) in temps.iter().enumerate() {
+            match t {
+                0xFF => println!("Sensor {i}: Not present"),
+                0xFE => println!("Sensor {i}: Error"),
+                0xFD => println!("Sensor {i}: Not powered"),
+                0xFC => println!("Sensor {i}: Not calibrated"),
+                val => {
+                    //let celsius = i32::from(val) + 200 - 273;
+                    println!(
+                        "Sensor {i}: {:}°C ({val:}, 0b{val:08b}){}",
+                        val - 73,
+                        if i == max_temp_idx { "*" } else { "" }
+                    );
                 }
             }
         }
+    } else if let Some(val) = args.fan {
+        if val == "auto" {
+            fans::set_auto()?;
+            println!("Set auto fan control.");
+        } else {
+            let duty: u8 = val.parse::<u8>()?.clamp(0, 100);
+            fans::set_duty(duty)?;
+            println!("Set to {duty:}");
+        }
+    } else if args.once {
+        // check temps and set fans to match curve
+        let max_temp = temp::get_max_temp()?;
+        let speed = fan_curve::get_fan_speed(max_temp);
+        fans::set_duty(speed)?;
+        println!("{:}°C: {speed:3}%", max_temp - 73);
+    } else if args.daemon {
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        let running = Arc::new(AtomicBool::new(true));
+        let r = running.clone();
+        ctrlc::set_handler(move || {
+            r.store(false, Ordering::SeqCst);
+        })
+        .expect("Error setting Ctrl-C handler");
+
+        while running.load(Ordering::SeqCst) {
+            let max_temp = temp::get_max_temp()?;
+            let speed = fan_curve::get_fan_speed(max_temp);
+            fans::set_duty(speed)?;
+            println!("{:}°C: {speed:3}%", max_temp - 73);
+            std::thread::sleep(std::time::Duration::from_secs(1));
+        }
+
+        // Cleanup
+        println!("\nShutting down...");
+        fans::set_auto()?;
+        println!("Set auto fan control.");
+    } else if args.curve {
+        println!("Temperature,PWM");
+        for temp in 0..=u8::MAX {
+            println!(
+                "{:},{:}",
+                i16::from(temp) - 73,
+                fan_curve::get_fan_speed(temp)
+            );
+        }
+    } else {
+        use clap::CommandFactory;
+        let mut cmd = Args::command();
+        cmd.print_help()?;
     }
+
     Ok(())
 }

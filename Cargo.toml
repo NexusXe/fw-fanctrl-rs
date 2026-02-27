@@ -6,6 +6,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+clap = { version = "4.5.60", features = ["derive"] }
+clap_complete = "4.5.66"
 ctrlc = "3.5.2"
 nix = {version = "0.31", features = ["ioctl", "fs"]}
 

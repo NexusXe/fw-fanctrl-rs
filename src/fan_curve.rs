@@ -2,6 +2,7 @@
 #![allow(clippy::too_many_lines)]
 
 const MINIMUM_FAN_SPEED: u8 = 10;
+const NUM_VALID_TEMPS: usize = 256 - 4;
 
 const fn abs(x: i64) -> i64 {
     if x < 0 { -x } else { x }
@@ -9,7 +10,13 @@ const fn abs(x: i64) -> i64 {
 
 /// Sign helper for const fn
 const fn sign(x: i64) -> i64 {
-    if x < 0 { -1 } else if x > 0 { 1 } else { 0 }
+    if x < 0 {
+        -1
+    } else if x > 0 {
+        1
+    } else {
+        0
+    }
 }
 
 const fn get_pt<const N: usize>(
@@ -25,7 +32,8 @@ const fn get_pt<const N: usize>(
     } else {
         intermediates[i - 1]
     };
-    pt.0 = pt.0.saturating_add((273 - crate::temp::EC_TEMP_SENSOR_OFFSET) as u8);
+    pt.0 =
+        pt.0.saturating_add((273 - crate::temp::EC_TEMP_SENSOR_OFFSET) as u8);
     pt
 }
 
@@ -44,14 +52,14 @@ const fn slope(p1: (u8, u8), p2: (u8, u8)) -> i64 {
 /// # Arguments
 /// * `start` - The (x, y) start point of the curve. Inputs below `x` clamp to `0`.
 /// * `end` - The (x, y) end point of the curve. Inputs above `x` clamp to `100`.
-/// * `intermediates` - An array of arbitrary interior points. 
+/// * `intermediates` - An array of arbitrary interior points.
 pub const fn generate_fan_curve_lut<const N: usize>(
     start: (u8, u8),
     end: (u8, u8),
     intermediates: &[(u8, u8); N],
-) -> [u8; 256] 
+) -> [u8; NUM_VALID_TEMPS]
 where
-    [(); N + 2]:
+    [(); N + 2]:,
 {
     // 1. Validate Inputs (using shifted values)
     let shifted_start = get_pt(start, end, intermediates, 0);
@@ -59,29 +67,47 @@ where
 
     assert!(shifted_start.1 <= 100, "Start Y must be <= 100");
     assert!(shifted_end.1 <= 100, "End Y must be <= 100");
-    
+
     let mut i = 1;
     let mut last_x = shifted_start.0;
     while i <= N {
         let pt = get_pt(start, end, intermediates, i);
         assert!(pt.1 <= 100, "Intermediate Y must be <= 100");
-        assert!(pt.0 > last_x, "Curve X coordinates must be strictly increasing");
+        assert!(
+            pt.0 > last_x,
+            "Curve X coordinates must be strictly increasing"
+        );
         last_x = pt.0;
         i += 1;
     }
-    assert!(shifted_end.0 > last_x, "End X must be strictly greater than last intermediate X");
+    assert!(
+        shifted_end.0 > last_x,
+        "End X must be strictly greater than last intermediate X"
+    );
 
     // 2. Compute Initial Tangents for Cubic Spline
     // We now use generic_const_exprs to size tangents perfectly to N + 2
     let mut tangents = [0i64; N + 2];
 
-    tangents[0] = slope(get_pt(start, end, intermediates, 0), get_pt(start, end, intermediates, 1));
-    tangents[N + 1] = slope(get_pt(start, end, intermediates, N), get_pt(start, end, intermediates, N + 1));
+    tangents[0] = slope(
+        get_pt(start, end, intermediates, 0),
+        get_pt(start, end, intermediates, 1),
+    );
+    tangents[N + 1] = slope(
+        get_pt(start, end, intermediates, N),
+        get_pt(start, end, intermediates, N + 1),
+    );
 
     let mut i = 1;
     while i <= N {
-        let s1 = slope(get_pt(start, end, intermediates, i - 1), get_pt(start, end, intermediates, i));
-        let s2 = slope(get_pt(start, end, intermediates, i), get_pt(start, end, intermediates, i + 1));
+        let s1 = slope(
+            get_pt(start, end, intermediates, i - 1),
+            get_pt(start, end, intermediates, i),
+        );
+        let s2 = slope(
+            get_pt(start, end, intermediates, i),
+            get_pt(start, end, intermediates, i + 1),
+        );
         tangents[i] = i64::midpoint(s1, s2); // Average contiguous slopes
         i += 1;
     }
@@ -116,15 +142,14 @@ where
         i += 1;
     }
 
-    // 4. Generate the LUT mapped to 0..=255
-    let mut lut = [0u8; 256];
+    let mut lut = [0u8; NUM_VALID_TEMPS];
     let mut x_int = 0usize;
 
-    while x_int <= 255 {
+    while x_int < NUM_VALID_TEMPS {
         let x = x_int as u8;
 
         if x < shifted_start.0 {
-            lut[x_int] = MINIMUM_FAN_SPEED;   // Clamped to 0 below shifted start.x
+            lut[x_int] = MINIMUM_FAN_SPEED; // Clamped to 0 below shifted start.x
         } else if x > shifted_end.0 {
             lut[x_int] = 100; // Clamped to 100 above shifted end.x
         } else {
@@ -177,7 +202,7 @@ where
                 y_fp += (h11 * m1_t) >> 16;
 
                 // Extract and round to nearest integer
-                let mut y = (y_fp + (1 << 15)) >> 16; 
+                let mut y = (y_fp + (1 << 15)) >> 16;
 
                 // Guaranteed safeguard 0..=100 bound clamp
                 if y < 0 {
@@ -195,20 +220,18 @@ where
     lut
 }
 
+// (Temperature, Fan Speed)
 const START_POINT: (u8, u8) = (25, MINIMUM_FAN_SPEED);
-const END_POINT: (u8, u8)   = (85, 100);
+const END_POINT: (u8, u8) = (85, 100);
 
 // Intermediate control points. (Must be strictly increasing in X).
-const INTERMEDIATE_POINTS: [(u8, u8); 4] = [
-    (30, 15),
-    (45, 30), 
-    (60, 50), 
-    (75, 80), 
-];
+const INTERMEDIATE_POINTS: [(u8, u8); 4] = [(30, 15), (45, 30), (60, 50), (75, 80)];
 
 // Generate the fully smoothed LUT at compile-time
-pub const FAN_LUT: [u8; 256] = generate_fan_curve_lut(
-    START_POINT,
-    END_POINT,
-    &INTERMEDIATE_POINTS,
-);
+pub const FAN_LUT: [u8; NUM_VALID_TEMPS] =
+    generate_fan_curve_lut(START_POINT, END_POINT, &INTERMEDIATE_POINTS);
+
+pub fn get_fan_speed(temp: u8) -> u8 {
+    // dbg!(temp, temp.clamp(START_POINT.0, END_POINT.0));
+    FAN_LUT[temp.clamp(START_POINT.0 + 73, END_POINT.0 + 73) as usize]
+}
