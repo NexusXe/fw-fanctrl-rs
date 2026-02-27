@@ -1,0 +1,29 @@
+cargo-features = ["profile-rustflags"]
+
+[package]
+name = "fw-fanctrl-rs"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+ctrlc = "3.5.2"
+nix = {version = "0.31", features = ["ioctl", "fs"]}
+
+[profile.release]
+strip = true
+opt-level = 3
+debug = false
+debug-assertions = false
+overflow-checks = false
+codegen-units = 1
+lto = "fat"
+rustflags = ["-C", "target-cpu=native"]
+
+[profile.release.build-override]
+strip = true
+opt-level = 3
+debug = false
+debug-assertions = false
+overflow-checks = false
+codegen-units = 1
+rustflags = [ "-C", "target-cpu=native"]
