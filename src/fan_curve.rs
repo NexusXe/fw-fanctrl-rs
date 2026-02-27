@@ -236,50 +236,110 @@ impl FanProfile {
     }
 }
 
-const DEFAULT_START: (u8, u8) = (25, 10);
-const DEFAULT_END: (u8, u8) = (85, 100);
-const DEFAULT_INTERMEDIATES: [(u8, u8); 4] = [(30, 15), (45, 30), (60, 50), (75, 80)];
-const DEFAULT_LUT: [u8; (DEFAULT_END.0 - DEFAULT_START.0 + 1) as usize] =
-    generate_fan_curve_lut(DEFAULT_START, DEFAULT_END, &DEFAULT_INTERMEDIATES);
+macro_rules! define_profile {
+    ($prof_ident:ident, $name_str:literal, $start:expr, $end:expr, $intermediates:expr) => {
+        pub const $prof_ident: FanProfile = FanProfile {
+            name: $name_str,
+            start: $start.0,
+            end: $end.0,
+            lut: &{
+                const S: (u8, u8) = $start;
+                const E: (u8, u8) = $end;
+                const LUT: [u8; (E.0 - S.0 + 1) as usize] =
+                    generate_fan_curve_lut(S, E, &$intermediates);
+                LUT
+            },
+        };
+    };
+}
 
-pub const DEFAULT_PROFILE: FanProfile = FanProfile {
-    name: "default",
-    start: DEFAULT_START.0,
-    end: DEFAULT_END.0,
-    lut: &DEFAULT_LUT,
-};
+define_profile!(
+    FW_LAZIEST,
+    "fw-laziest",
+    (45, 0),
+    (85, 100),
+    [(65, 25), (70, 35), (75, 50)]
+);
 
-const QUIET_START: (u8, u8) = (30, 10);
-const QUIET_END: (u8, u8) = (90, 100);
-const QUIET_INTERMEDIATES: [(u8, u8); 4] = [(35, 15), (50, 25), (65, 40), (80, 60)];
-const QUIET_LUT: [u8; (QUIET_END.0 - QUIET_START.0 + 1) as usize] =
-    generate_fan_curve_lut(QUIET_START, QUIET_END, &QUIET_INTERMEDIATES);
+define_profile!(
+    FW_LAZY,
+    "fw-lazy",
+    (50, 15),
+    (85, 100),
+    [(65, 25), (70, 35), (75, 50)]
+);
 
-pub const QUIET_PROFILE: FanProfile = FanProfile {
-    name: "quiet",
-    start: QUIET_START.0,
-    end: QUIET_END.0,
-    lut: &QUIET_LUT,
-};
+define_profile!(
+    FW_MEDIUM,
+    "fw-medium",
+    (40, 15),
+    (85, 100),
+    [(60, 30), (70, 40), (75, 80)]
+);
 
-const PERFORMANCE_START: (u8, u8) = (25, 15);
-const PERFORMANCE_END: (u8, u8) = (80, 100);
-const PERFORMANCE_INTERMEDIATES: [(u8, u8); 4] = [(35, 30), (50, 50), (65, 75), (75, 100)];
-const PERFORMANCE_LUT: [u8; (PERFORMANCE_END.0 - PERFORMANCE_START.0 + 1) as usize] =
-    generate_fan_curve_lut(
-        PERFORMANCE_START,
-        PERFORMANCE_END,
-        &PERFORMANCE_INTERMEDIATES,
-    );
+define_profile!(FW_DEAF, "fw-deaf", (0, 20), (60, 100), [(40, 30), (50, 50)]);
 
-pub const PERFORMANCE_PROFILE: FanProfile = FanProfile {
-    name: "performance",
-    start: PERFORMANCE_START.0,
-    end: PERFORMANCE_END.0,
-    lut: &PERFORMANCE_LUT,
-};
+define_profile!(FW_AEOLUS, "fw-aeolus", (0, 20), (60, 100), [(40, 50)]);
 
-pub const PROFILES: &[FanProfile] = &[DEFAULT_PROFILE, QUIET_PROFILE, PERFORMANCE_PROFILE];
+define_profile!(
+    DEFAULT_PROFILE,
+    "default",
+    (25, 10),
+    (85, 100),
+    [(30, 15), (45, 30), (60, 50), (75, 80)]
+);
+
+define_profile!(
+    QUIET_PROFILE,
+    "quiet",
+    (30, 10),
+    (92, 100),
+    [
+        (35, 15),
+        (50, 25),
+        (65, 40),
+        (80, 60),
+        (85, 80),
+        (90, 90),
+    ]
+);
+
+define_profile!(
+    PERFORMANCE_PROFILE,
+    "performance",
+    (25, 15),
+    (80, 100),
+    [(35, 30), (50, 50), (65, 75)]
+);
+
+define_profile!(
+    TURBO_PROFILE,
+    "turbo",
+    (25, 25),
+    (70, 100),
+    [(30, 35), (45, 50), (60, 75)]
+);
+
+define_profile!(
+    DEAF_PROFILE,
+    "deaf",
+    (25, 35),
+    (65, 100),
+    [(30, 40), (45, 50), (60, 75)]
+);
+
+pub const PROFILES: &[FanProfile] = &[
+    FW_LAZIEST,
+    FW_LAZY,
+    FW_MEDIUM,
+    FW_DEAF,
+    FW_AEOLUS,
+    DEFAULT_PROFILE,
+    QUIET_PROFILE,
+    PERFORMANCE_PROFILE,
+    TURBO_PROFILE,
+    DEAF_PROFILE,
+];
 
 pub fn get_profile_by_name(name: &str) -> Option<&'static FanProfile> {
     PROFILES.iter().find(|p| p.name == name)

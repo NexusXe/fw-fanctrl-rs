@@ -44,6 +44,10 @@ struct Args {
     /// Generate shell completions
     #[arg(long, value_enum)]
     print_completions: Option<clap_complete::Shell>,
+
+    /// Print total LUT size
+    #[arg(long)]
+    total_lut_size: bool,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -124,6 +128,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         for temp in 0..=u8::MAX {
             println!("{:},{:}", i16::from(temp) - 73, profile.get_fan_speed(temp));
         }
+    } else if args.total_lut_size {
+        let total_lut_size: usize = fan_curve::PROFILES.iter().map(|p| p.lut.len()).sum();
+        println!("{total_lut_size}");
     } else {
         let mut cmd = Args::command();
         cmd.print_help()?;
