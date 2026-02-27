@@ -34,7 +34,7 @@ struct Args {
     once: bool,
 
     /// Print fan curve in CSV format
-    #[arg(short = 'c', long)]
+    #[arg(long)]
     curve: bool,
 
     /// Generate shell completions
@@ -120,7 +120,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             );
         }
     } else {
-        use clap::CommandFactory;
         let mut cmd = Args::command();
         cmd.print_help()?;
     }
