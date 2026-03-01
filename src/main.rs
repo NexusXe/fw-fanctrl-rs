@@ -182,6 +182,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut config_default = None;
 
+    if let Some(profile) = args.r#use {
+        restart_daemon::<false>(&profile)?;
+        return Ok(());
+    } else if let Some(profile) = args.use_default {
+        restart_daemon::<true>(&profile)?;
+        return Ok(());
+    }
+
     match load_config(&args.config) {
         Ok(config) => {
             infov!("Loaded config from {}", args.config);
@@ -271,10 +279,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         for curve in curves {
             println!("[OUT]: {curve}");
         }
-    } else if let Some(profile) = args.r#use {
-        restart_daemon::<false>(&profile)?;
-    } else if let Some(profile) = args.use_default {
-        restart_daemon::<true>(&profile)?;
     } else {
         let mut cmd = Args::command();
         cmd.print_help()?;
