@@ -5,14 +5,18 @@ edition = "2024"
 license = "AGPL-3.0-or-later"
 
 [dependencies]
+base64 = {version = "0.22.1", default-features = false, features = ["std"] }
 clap = { version = "4.5.60", features = ["derive"] }
 clap_complete = "4.5.66"
 ctrlc = "3.5.2"
-nix = { version = "0.31", features = ["ioctl", "fs"] }
-serde = { version = "1.0.228", features = ["derive"] }
-toml = "1.0.3"
-xdg = "3.0.0"
-xxhash-rust = { version = "0.8.15", features = ["const_xxh3", "std", "xxh3"] }
+icy_sixel = "0.5.0"
+image = { version = "0.25.9", default-features = false, features = ["png", "jpeg", "webp"] }
+nix = { version = "0.31", default-features = false, features = ["ioctl", "term"] }
+plotters = { version = "0.3", default-features = false, features = ["bitmap_backend", "svg_backend", "ttf", "line_series"] }
+serde = { version = "1.0.228", default-features = false, features = ["derive"] }
+toml = { version = "1.0.3", default-features = false, features = ["parse", "serde"] }
+xdg = { version = "3.0.0", default-features = false }
+xxhash-rust = { version = "0.8.15", default-features = false, features = ["const_xxh3", "xxh3"] }
 
 [profile.release]
 opt-level = 3

@@ -12,6 +12,7 @@
 pub(crate) mod common;
 mod fan_curve;
 mod fans;
+mod plot;
 mod temp;
 
 use clap::{CommandFactory, Parser};
@@ -168,6 +169,37 @@ struct Args {
         conflicts_with = "use"
     )]
     r#use_default: Option<String>,
+
+    /// Plot all curves
+    #[arg(
+        short = 'P',
+        long,
+        conflicts_with = "once",
+        conflicts_with = "daemon",
+        conflicts_with = "fan",
+        conflicts_with = "temp",
+        conflicts_with = "curve",
+        conflicts_with = "total_lut_size",
+        conflicts_with = "list_external_curves",
+        conflicts_with = "use",
+        conflicts_with = "use_default"
+    )]
+    plot: bool,
+
+    #[allow(clippy::doc_markdown)]
+    /// Path to save the plot to.
+    /// Supported formats: png, jpg, webp, svg
+    /// Default: ./fan_curves.png
+    #[arg(short = 'o', long, requires("plot"), default_value = "fan_curves.png")]
+    out: String,
+
+    /// (Try to) force sixel output
+    #[arg(long, requires("plot"))]
+    force_sixel: bool,
+
+    /// (Try to) force kitty output
+    #[arg(long, requires("plot"))]
+    force_kitty: bool,
 }
 
 #[allow(clippy::too_many_lines)] // too bad!
