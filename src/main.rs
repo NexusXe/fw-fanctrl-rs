@@ -203,7 +203,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             infov!("Use-once file found, using profile from file.");
             args.profile = std::fs::read_to_string(use_once_path)?;
             // remove the use-once file
-            //std::fs::remove_file(use_once_path)?;
+            std::fs::remove_file(use_once_path)?;
         } else {
             infov!("No use-once file found, using default profile.");
             args.profile = config_default;
