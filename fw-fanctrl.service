@@ -7,7 +7,7 @@ After=user@%i.service
 
 [Service]
 Type=simple
-ExecStopPost=/usr/local/bin/fw-fanctrl-rs -f
+ExecStopPost=/usr/local/bin/fw-fanctrl-rs -f -p default
 
 ExecStart=/usr/local/bin/fw-fanctrl-rs -d -v
 CPUSchedulingPolicy=fifo
