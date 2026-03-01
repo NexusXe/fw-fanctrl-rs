@@ -213,7 +213,7 @@ pub(super) fn plot_curves(
     );
 
     if to_file.extension().is_some_and(|ext| ext != "svg") {
-        info!("Saving fan curve plot to {}...", to_file.display());
+        infov!("Saving fan curve plot to {}...", to_file.display());
     }
 
     let using_kitty = (support.kitty || force_kitty) && !force_sixel;
