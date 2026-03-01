@@ -85,7 +85,8 @@ struct Args {
     #[arg(short = 't', long)]
     temp: bool,
 
-    /// Set fan speeds (0-100 or 'auto'). If passed without a value, defaults to 'auto'.
+    /// Set fan speeds (0-100 or 'auto').
+    /// Default: auto
     #[arg(short = 'f', long, value_name = "SPEED", num_args = 0..=1, default_missing_value = "auto")]
     fan: Option<String>,
 
@@ -94,6 +95,7 @@ struct Args {
     daemon: bool,
 
     /// Sleep duration in milliseconds between checks
+    /// Default: 1000
     #[arg(short = 's', long, default_value = "1000")]
     sleep_millis: u64,
 
@@ -106,6 +108,7 @@ struct Args {
     curve: bool,
 
     /// Fan curve profile to use
+    /// Default behavior: if /tmp/fw-fanctrl-rs.use-once.tmp exists, use it, otherwise use "default"
     #[arg(short = 'p', long, default_value = "default-or-use-once")]
     profile: String,
 
