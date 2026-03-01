@@ -150,7 +150,7 @@ struct Args {
         conflicts_with = "temp",
         conflicts_with = "curve",
         conflicts_with = "total_lut_size",
-        conflicts_with = "list_external_curves",
+        conflicts_with = "list_external_curves"
     )]
     r#use: Option<String>,
 
@@ -164,7 +164,7 @@ struct Args {
         conflicts_with = "curve",
         conflicts_with = "total_lut_size",
         conflicts_with = "list_external_curves",
-        conflicts_with = "use",
+        conflicts_with = "use"
     )]
     r#use_default: Option<String>,
 }
@@ -194,7 +194,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Ok(config) => {
             infov!("Loaded config from {}", args.config);
             config_default = Some(config.default_curve);
-            infov!("    With default profile: {}", config_default.as_ref().unwrap());
+            infov!(
+                "    With default profile: {}",
+                config_default.as_ref().unwrap()
+            );
             args.sleep_millis = config.poll_interval_ms;
             infov!("    With poll interval: {}ms", args.sleep_millis);
         }
@@ -342,9 +345,11 @@ fn run_daemon(
     Ok(())
 }
 
-fn restart_daemon<const NEW_DEFAULT: bool>(new_curve: &str) -> Result<(), Box<dyn std::error::Error>> {
-    use std::process::Command;
+fn restart_daemon<const NEW_DEFAULT: bool>(
+    new_curve: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
     use std::env;
+    use std::process::Command;
 
     let uid = env::var("SUDO_UID").unwrap_or_else(|_| String::from("1000"));
     let service_name = format!("fw-fanctrl@{uid}.service");
@@ -361,7 +366,10 @@ fn restart_daemon<const NEW_DEFAULT: bool>(new_curve: &str) -> Result<(), Box<dy
     if NEW_DEFAULT {
         // open the default config file and replace the line that specifies the default curve
         let config = std::fs::read_to_string(DEFAULT_CONFIG_PATH)?;
-        let config = config.replace("default_curve = \"default\"", &format!("default_curve = \"{new_curve}\""));
+        let config = config.replace(
+            "default_curve = \"default\"",
+            &format!("default_curve = \"{new_curve}\""),
+        );
         std::fs::write(DEFAULT_CONFIG_PATH, config)?;
         info!("Set \"{new_curve}\" as the new default curve.");
     } else {
