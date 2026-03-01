@@ -5,6 +5,7 @@
 #![feature(const_convert)]
 #![feature(const_default)]
 #![feature(const_try)]
+#![feature(portable_simd)]
 #![allow(incomplete_features)]
 #![warn(clippy::pedantic)]
 #![allow(clippy::cast_possible_truncation)]

@@ -5,6 +5,7 @@ use crate::common::{
 use std::{
     ffi::{c_char, c_int},
     os::fd::AsRawFd,
+    simd::prelude::*,
     sync::OnceLock,
 };
 
@@ -18,6 +19,11 @@ pub(crate) const EC_TEMP_SENSOR_OFFSET_CELSIUS: u16 = KELVIN_CELSIUS_OFFSET - EC
 pub(crate) const MIN_TEMP_CELSIUS: i16 = -73;
 #[allow(unused)]
 pub(crate) const MAX_TEMP_CELSIUS: i16 = 181;
+
+/// Number of temp sensors at `EC_MEMMAP_TEMP_SENSOR`
+const EC_TEMP_SENSOR_ENTRIES: usize = 16;
+
+type TempSensorVector = Simd<u8, EC_TEMP_SENSOR_ENTRIES>;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd)]
 pub(crate) struct ValidEcTemp(pub(crate) u8);
@@ -210,7 +216,7 @@ pub(crate) fn num_temp_sensors() -> &'static u8 {
     })
 }
 
-pub(crate) fn get_temperatures() -> Result<Vec<UnvalidatedEcTemp>, nix::Error> {
+fn get_temperatures_16() -> Result<TempSensorVector, nix::Error> {
     let sensors_to_read = *num_temp_sensors();
     let mut mem = CrosEcReadmemV2 {
         offset: 0x00, // EC_MEMMAP_TEMP_SENSOR
@@ -226,56 +232,37 @@ pub(crate) fn get_temperatures() -> Result<Vec<UnvalidatedEcTemp>, nix::Error> {
         }
     }
 
-    Ok(mem.buffer[..sensors_to_read as usize]
-        .iter()
-        .map(|&temp| UnvalidatedEcTemp(temp))
-        .collect())
+    Ok(TempSensorVector::from_slice(&mem.buffer[..sensors_to_read as usize]))
 }
 
-fn maxima_native(input: &[u8]) -> u8 {
-    unsafe { *input.iter().max().unwrap_unchecked() }
+pub(crate) fn get_temperatures() -> Result<Vec<UnvalidatedEcTemp>, nix::Error> {
+    let temps = get_temperatures_16()?;
+    let temps = &temps.as_array()[0..*num_temp_sensors() as _];
+    Ok(temps.iter().map(|&t| UnvalidatedEcTemp(t)).collect())
 }
 
-#[target_feature(enable = "avx512vl")]
-#[allow(clippy::cast_sign_loss)]
-unsafe fn maxima_vl(input: &[u8]) -> u8 {
-    use std::arch::x86_64::{
-        __m128i, _mm_cvtepu8_epi16, _mm_cvtsi128_si32, _mm_loadu_si64, _mm_minpos_epu16,
-        _mm_ternarylogic_epi32,
-    };
-    unsafe {
-        let mut v: __m128i = _mm_loadu_si64(input.as_ptr());
-        v = _mm_ternarylogic_epi32(v, v, v, 0x55);
-        v = _mm_cvtepu8_epi16(v);
-        v = _mm_minpos_epu16(v);
-        !_mm_cvtsi128_si32(v) as u8
+#[inline]
+pub fn maxima_16(input: u8x16) -> u8 {
+    input.reduce_max()
+}
+
+#[inline]
+pub fn maxima_8(input: u8x8) -> u8 {
+    input.reduce_max()
+}
+
+#[inline]
+fn max_temp(input: TempSensorVector) -> ValidEcTemp {
+    if *num_temp_sensors() <= 8 {
+        ValidEcTemp(maxima_8(u8x8::from_slice(&input.as_array()[0..8])))
+    } else {
+        ValidEcTemp(maxima_16(input))
     }
 }
 
-pub(crate) fn max_temp(input: &[ValidEcTemp]) -> ValidEcTemp {
-    let temps: Vec<u8> = input.iter().map(|temp| temp.0).collect();
-    let max_temp = if cfg!(target_feature = "avx512vl") && input.len() == 8 {
-        unsafe { maxima_vl(&temps) }
-    } else {
-        maxima_native(&temps)
-    };
-    ValidEcTemp(max_temp)
-}
-
 pub(crate) fn get_max_temp() -> Result<ValidEcTemp, nix::Error> {
-    let temps = get_temperatures()?;
-    Ok(max_temp(
-        &temps
-            .into_iter()
-            .enumerate()
-            .map(|(i, t)| {
-                t.get().unwrap_or_else(|e| {
-                    eprintln!("Sensor {i} error: {e}");
-                    ValidEcTemp::default()
-                })
-            })
-            .collect::<Vec<_>>(),
-    ))
+    let temps = get_temperatures_16()?;
+    Ok(max_temp(temps))
 }
 
 #[cfg(test)]
@@ -320,58 +307,6 @@ mod tests {
         for (kelvin, expected_celsius) in test_cases {
             let celsius: CelsiusTemp = KelvinTemp(kelvin).into();
             assert_eq!(celsius.0, expected_celsius);
-        }
-    }
-
-    #[test]
-    fn test_maxima_consistency() {
-        // Simple Linear Congruential Generator for deterministic RNG
-        struct Lcg {
-            state: u32,
-        }
-
-        impl Lcg {
-            fn new(seed: u32) -> Self {
-                Self { state: seed }
-            }
-
-            fn next_u8(&mut self) -> u8 {
-                self.state = self
-                    .state
-                    .wrapping_mul(1_664_525)
-                    .wrapping_add(1_013_904_223);
-                (self.state >> 24) as u8
-            }
-        }
-
-        // if !std::is_x86_feature_detected!("avx512vl") && !std::is_x86_feature_detected!("avx512bw")
-        // {
-        //     if !std::is_x86_feature_detected!("avx512f")
-        //         || !std::is_x86_feature_detected!("avx512vl")
-        //     {
-        //         println!("Skipping test: avx512f/avx512vl not supported on this CPU");
-        //         return;
-        //     }
-        // } else if !std::is_x86_feature_detected!("avx512vl") {
-        //     println!("Skipping test: avx512vl not supported on this CPU");
-        //     return;
-        // }
-
-        let mut rng = Lcg::new(42);
-
-        for _ in 0..2usize.pow(22) {
-            let mut input = [0u8; 8];
-            for byte in &mut input {
-                *byte = rng.next_u8();
-            }
-
-            let expected = maxima_native(&input);
-            let actual = unsafe { maxima_vl(&input) };
-
-            assert_eq!(
-                expected, actual,
-                "Mismatch on input {input:?}: native={expected}, vl={actual}"
-            );
         }
     }
 }
