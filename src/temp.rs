@@ -22,8 +22,15 @@ pub(crate) const MAX_TEMP_CELSIUS: i16 = 181;
 
 /// Number of temp sensors at `EC_MEMMAP_TEMP_SENSOR`
 const EC_TEMP_SENSOR_ENTRIES: usize = 16;
+const SIMD_CAPABLE_TEMP_SENSORS: usize = {
+    let mut x = EC_TEMP_SENSOR_ENTRIES.ilog2();
+    if 2usize.pow(x) < EC_TEMP_SENSOR_ENTRIES {
+        x += 1;
+    }
+    2usize.pow(x)
+};
 
-type TempSensorVector = Simd<u8, EC_TEMP_SENSOR_ENTRIES>;
+type TempSensorVector = Simd<u8, SIMD_CAPABLE_TEMP_SENSORS>;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd)]
 pub(crate) struct ValidEcTemp(pub(crate) u8);
@@ -216,7 +223,7 @@ pub(crate) fn num_temp_sensors() -> &'static u8 {
     })
 }
 
-fn get_temperatures_16() -> Result<TempSensorVector, nix::Error> {
+fn get_temperatures_v() -> Result<TempSensorVector, nix::Error> {
     let sensors_to_read = *num_temp_sensors();
     let mut mem = CrosEcReadmemV2 {
         offset: 0x00, // EC_MEMMAP_TEMP_SENSOR
@@ -232,36 +239,24 @@ fn get_temperatures_16() -> Result<TempSensorVector, nix::Error> {
         }
     }
 
-    Ok(TempSensorVector::from_slice(&mem.buffer[..sensors_to_read as usize]))
+    Ok(TempSensorVector::from_slice(
+        &mem.buffer[..TempSensorVector::LEN],
+    ))
 }
 
 pub(crate) fn get_temperatures() -> Result<Vec<UnvalidatedEcTemp>, nix::Error> {
-    let temps = get_temperatures_16()?;
+    let temps = get_temperatures_v()?;
     let temps = &temps.as_array()[0..*num_temp_sensors() as _];
     Ok(temps.iter().map(|&t| UnvalidatedEcTemp(t)).collect())
 }
 
 #[inline]
-pub fn maxima_16(input: u8x16) -> u8 {
-    input.reduce_max()
-}
-
-#[inline]
-pub fn maxima_8(input: u8x8) -> u8 {
-    input.reduce_max()
-}
-
-#[inline]
 fn max_temp(input: TempSensorVector) -> ValidEcTemp {
-    if *num_temp_sensors() <= 8 {
-        ValidEcTemp(maxima_8(u8x8::from_slice(&input.as_array()[0..8])))
-    } else {
-        ValidEcTemp(maxima_16(input))
-    }
+    ValidEcTemp(input.reduce_max())
 }
 
 pub(crate) fn get_max_temp() -> Result<ValidEcTemp, nix::Error> {
-    let temps = get_temperatures_16()?;
+    let temps = get_temperatures_v()?;
     Ok(max_temp(temps))
 }
 
