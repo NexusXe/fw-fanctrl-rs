@@ -129,12 +129,19 @@ define_profile!(
     [(25, 35), (30, 40), (45, 50), (60, 75), (65, 100)]
 );
 
+define_profile!(
+    MAX_PROFILE,
+    "max",
+    [(0, 99), (1, 100)]
+);
+
 pub const BUILTIN_PROFILES: &[FanProfile] = &[
     DEFAULT_PROFILE,
     QUIET_PROFILE,
     PERFORMANCE_PROFILE,
     TURBO_PROFILE,
     DEAF_PROFILE,
+    MAX_PROFILE,
 ];
 
 pub(crate) const fn flatten_points(points: &[(u8, u8)]) -> &[u8] {

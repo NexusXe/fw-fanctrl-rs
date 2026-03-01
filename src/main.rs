@@ -420,7 +420,7 @@ fn restart_daemon<const NEW_DEFAULT: bool>(
                 println!("[ERROR]: Failed to set \"{new_curve}\" as the new default curve.");
                 match e.kind() {
                     std::io::ErrorKind::PermissionDenied => {
-                        println!("Permission denied. Are you running as root?")
+                        println!("Permission denied. Are you running as root?");
                     }
                     _ => println!("Error: {e}"),
                 }
@@ -434,7 +434,7 @@ fn restart_daemon<const NEW_DEFAULT: bool>(
                 println!("[ERROR]: Failed to set \"{new_curve}\" as the curve to use once.");
                 match e.kind() {
                     std::io::ErrorKind::PermissionDenied => {
-                        println!("Permission denied. Are you running as root?")
+                        println!("Permission denied. Are you running as root?");
                     }
                     _ => println!("Error: {e}"),
                 }
