@@ -185,11 +185,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     match load_config(&args.config) {
         Ok(config) => {
             infov!("Loaded config from {}", args.config);
-            args.profile.clone_from(&config.default_curve);
             config_default = Some(config.default_curve);
-            infov!("    Using default profile: {}", args.profile);
+            infov!("    With default profile: {}", config_default.as_ref().unwrap());
             args.sleep_millis = config.poll_interval_ms;
-            infov!("    Using poll interval: {}ms", args.sleep_millis);
+            infov!("    With poll interval: {}ms", args.sleep_millis);
         }
         Err(e) => {
             warn!("Failed to load config: {e}");
