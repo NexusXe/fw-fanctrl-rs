@@ -55,6 +55,38 @@ cargo +nightly build --release
 sudo make install
 ```
 
+#### Systemd Usage
+
+The daemon is managed via an instantiated systemd service tied to your user ID.
+<details>
+<summary><b>bash/zsh</b></summary>
+To enable and start the service on boot:
+
+```bash
+sudo systemctl enable --now fw-fanctrl@$(id -u).service
+```
+
+To check the current status of the daemon:
+
+```bash
+systemctl status fw-fanctrl@$(id -u).service
+```
+</details>
+<details>
+<summary><b>fish</b></summary>
+To enable and start the service on boot:
+
+```fish
+sudo systemctl enable --now fw-fanctrl@(id -u).service
+```
+
+To check the current status of the daemon:
+
+```fish
+systemctl status fw-fanctrl@(id -u).service
+```
+</details>
+
 ## Configuration
 
 All configuration files are stored globally in /etc/fw-fanctrl-rs/.
@@ -85,38 +117,6 @@ sudo fw-fanctrl-rs --use quiet
 ### Other CLI Commands
 
 See `fw-fanctrl-rs --help` for a full list of commands.
-
-## Systemd Usage
-
-The daemon is managed via an instantiated systemd service tied to your user ID.
-<details>
-<summary><b>bash/zsh</b></summary>
-To enable and start the service on boot:
-
-```bash
-sudo systemctl enable --now fw-fanctrl@$(id -u).service
-```
-
-To check the current status of the daemon:
-
-```bash
-systemctl status fw-fanctrl@$(id -u).service
-```
-</details>
-<details>
-<summary><b>fish</b></summary>
-To enable and start the service on boot:
-
-```fish
-sudo systemctl enable --now fw-fanctrl@(id -u).service
-```
-
-To check the current status of the daemon:
-
-```fish
-systemctl status fw-fanctrl@(id -u).service
-```
-</details><br>
 
 ## Logging
 
