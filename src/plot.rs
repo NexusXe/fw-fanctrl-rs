@@ -235,13 +235,17 @@ pub(super) fn plot_curves(
         )?;
         if to_file.extension().is_some_and(|ext| ext == "png") {
             // actually write the png to disk
-            infov!("Writing png to {}", to_file.display());
+            infov!("Writing png to {}", to_file.canonicalize()?.display());
             std::fs::write(to_file, &png_buf)?;
         }
     } else if to_file.extension().is_some_and(|ext| ext != "svg") {
         // otherwise we also need to encode to whatever other format the user wants
-        infov!("Writing plot to {}", to_file.display());
+        infov!("Writing plot to {}", to_file.canonicalize()?.display());
         image.save(to_file)?;
+        // verify file exists
+        if !to_file.exists() {
+            return Err("Failed to save plot to file".into());
+        }
     }
 
     // prefer kitty graphics over sixel
@@ -254,7 +258,7 @@ pub(super) fn plot_curves(
     if !using_kitty && !using_sixel {
         infov!("Terminal doesn't seem to support Sixel or Kitty graphics.");
     }
-    println!("[OUT]: Image saved to {}", to_file.display());
+    println!("[OUT]: Image saved to {}", to_file.canonicalize()?.display());
     Ok(())
 }
 
