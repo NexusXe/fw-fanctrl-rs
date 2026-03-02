@@ -202,7 +202,7 @@ pub(super) fn plot_curves(
     }
 
     if to_file.extension().is_some_and(|ext| ext == "svg") {
-        infov!("Drawing SVG fan curve plot to {}", to_file.display());
+        infov!("Drawing SVG fan curve plot to {}", to_file.canonicalize()?.display());
         draw_chart!(SVGBackend::new(to_file, (WIDTH, HEIGHT)).into_drawing_area());
     }
     // still need to draw to buffer for kitty/sixel output
@@ -213,7 +213,7 @@ pub(super) fn plot_curves(
     );
 
     if to_file.extension().is_some_and(|ext| ext != "svg") {
-        infov!("Saving fan curve plot to {}...", to_file.display());
+        infov!("Saving fan curve plot to {}...", to_file.canonicalize()?.display());
     }
 
     let using_kitty = (support.kitty || force_kitty) && !force_sixel;
