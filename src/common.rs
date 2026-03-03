@@ -3,23 +3,19 @@ use std::ffi::c_int;
 use std::fs::{File, OpenOptions};
 use std::num::NonZero;
 use std::os::fd::AsRawFd;
-use std::sync::OnceLock;
+use std::sync::LazyLock;
 
 use crate::infov;
 
-static CROS_EC_FILE: OnceLock<File> = OnceLock::new();
-
-pub(crate) fn cros_ec() -> &'static File {
-    CROS_EC_FILE.get_or_init(|| {
-        let ec = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .open("/dev/cros_ec")
-            .expect("[ERROR]: Failed to open /dev/cros_ec. Are you running as root?");
-        infov!("Got EC file handle.");
-        ec
-    })
-}
+pub(crate) static CROS_EC_FILE: LazyLock<File> = LazyLock::new(|| {
+    let ec = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open("/dev/cros_ec")
+        .expect("[ERROR]: Failed to open /dev/cros_ec. Are you running as root?");
+    infov!("Got EC file handle.");
+    ec
+});
 
 #[allow(dead_code)]
 pub(crate) enum EcCmd {
@@ -262,7 +258,7 @@ ioctl_readwrite!(
 
 pub(crate) fn fire(payload: *mut CrosEcCommandV2) -> Result<Option<NonZero<c_int>>, nix::Error> {
     unsafe {
-        let result = cros_ec_cmd(cros_ec().as_raw_fd(), payload)?;
+        let result = cros_ec_cmd(CROS_EC_FILE.as_raw_fd(), payload)?;
         if result < 0 {
             Err(nix::Error::from_raw(result))
         } else {

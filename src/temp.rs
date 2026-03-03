@@ -1,12 +1,16 @@
-use crate::{common::{
-    CrosEcCommandV2, CrosEcReadmemV2, EcCmd, FullWriteV2Command, cros_ec, cros_ec_readmem, fire,
-}, infov};
+use crate::{
+    common::{
+        CROS_EC_FILE, CrosEcCommandV2, CrosEcReadmemV2, EcCmd, FullWriteV2Command,
+        cros_ec_readmem, fire,
+    },
+    infov,
+};
 
 use std::{
     ffi::{c_char, c_int},
     os::fd::AsRawFd,
     simd::prelude::*,
-    sync::OnceLock,
+    sync::LazyLock,
 };
 
 /// The offset of temperature value stored in mapped memory.  This allows
@@ -211,20 +215,16 @@ pub(crate) fn probe_sensor(
     Ok(response)
 }
 
-static NUM_TEMP_SENSORS: OnceLock<u8> = OnceLock::new();
-
-pub(crate) fn num_temp_sensors() -> &'static u8 {
-    NUM_TEMP_SENSORS.get_or_init(|| {
-        let num = (0..=u8::MAX)
-            .take_while(|&id| probe_sensor(id).is_ok())
-            .count() as u8;
-        infov!("Got {num:} temperature sensors.");
-        num
-    })
-}
+pub(crate) static NUM_TEMP_SENSORS: LazyLock<u8> = LazyLock::new(|| {
+    let num = (0..=u8::MAX)
+        .take_while(|&id| probe_sensor(id).is_ok())
+        .count() as u8;
+    infov!("Got {num:} temperature sensors.");
+    num
+});
 
 fn get_temperatures_v() -> Result<TempSensorVector, nix::Error> {
-    let sensors_to_read = *num_temp_sensors();
+    let sensors_to_read = *NUM_TEMP_SENSORS;
     let mut mem = CrosEcReadmemV2 {
         offset: 0x00, // EC_MEMMAP_TEMP_SENSOR
         bytes: u32::from(sensors_to_read),
@@ -233,7 +233,7 @@ fn get_temperatures_v() -> Result<TempSensorVector, nix::Error> {
 
     unsafe {
         // Fire the v2 readmem ioctl
-        let result = cros_ec_readmem(cros_ec().as_raw_fd(), &raw mut mem)?;
+        let result = cros_ec_readmem(CROS_EC_FILE.as_raw_fd(), &raw mut mem)?;
         if result < 0 {
             return Err(nix::Error::from_raw(result));
         }
@@ -246,7 +246,7 @@ fn get_temperatures_v() -> Result<TempSensorVector, nix::Error> {
 
 pub(crate) fn get_temperatures() -> Result<Vec<UnvalidatedEcTemp>, nix::Error> {
     let temps = get_temperatures_v()?;
-    let temps = &temps.as_array()[0..*num_temp_sensors() as _];
+    let temps = &temps.as_array()[0..*NUM_TEMP_SENSORS as _];
     Ok(temps.iter().map(|&t| UnvalidatedEcTemp(t)).collect())
 }
 
