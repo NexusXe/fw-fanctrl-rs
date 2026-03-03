@@ -58,7 +58,7 @@ fn check_terminal_support() -> Result<TerminalSupport, Box<dyn std::error::Error
     // read both responses
     let mut all_bytes: Vec<u8> = Vec::new();
     let mut buf = [0u8; 1];
-    while let Ok(1) = stdin.read(&mut buf) {
+    while matches!(stdin.read(&mut buf), Ok(1)) {
         all_bytes.push(buf[0]);
         if buf[0] == b'c' && all_bytes.windows(3).any(|w| w == b"\x1b[?") {
             break;

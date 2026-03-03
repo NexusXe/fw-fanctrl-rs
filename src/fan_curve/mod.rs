@@ -149,12 +149,13 @@ pub(crate) fn get_profile_by_name<'a>(
     name: &str,
     profiles: &'a [FanProfile],
 ) -> Option<&'a FanProfile> {
-    if let Some(profile) = profiles.iter().find(|p| p.name == name) {
-        Some(profile)
-    } else {
-        info!("Profile \"{name}\" not found.");
-        None
-    }
+    profiles.iter().find(|p| p.name == name).map_or_else(
+        || {
+            info!("Profile \"{name}\" not found.");
+            None
+        },
+        Some,
+    )
 }
 
 #[cfg(test)]

@@ -36,7 +36,7 @@ type TempSensorVector = Simd<u8, SIMD_CAPABLE_TEMP_SENSORS>;
 pub(crate) struct ValidEcTemp(pub(crate) u8);
 
 impl ValidEcTemp {
-    const EC_TEMP_SENSOR_DEFAULT: ValidEcTemp = ValidEcTemp((296 - EC_TEMP_SENSOR_OFFSET) as u8);
+    const EC_TEMP_SENSOR_DEFAULT: Self = Self((296 - EC_TEMP_SENSOR_OFFSET) as u8);
 
     pub(crate) const fn to_celsius(self) -> CelsiusTemp {
         self.into()
@@ -61,7 +61,7 @@ impl const From<CelsiusTemp> for ValidEcTemp {
         // verify that the conversion is valid
         debug_assert!(raw >= 0 && raw <= 255);
         #[allow(clippy::cast_sign_loss)]
-        ValidEcTemp(raw as u8)
+        Self(raw as u8)
     }
 }
 
@@ -76,10 +76,10 @@ pub(crate) enum EcTempSensorError {
 impl std::fmt::Display for EcTempSensorError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            EcTempSensorError::NotPresent => write!(f, "Not present"),
-            EcTempSensorError::Error => write!(f, "Error"),
-            EcTempSensorError::NotPowered => write!(f, "Not powered"),
-            EcTempSensorError::NotCalibrated => write!(f, "Not calibrated"),
+            Self::NotPresent => write!(f, "Not present"),
+            Self::Error => write!(f, "Error"),
+            Self::NotPowered => write!(f, "Not powered"),
+            Self::NotCalibrated => write!(f, "Not calibrated"),
         }
     }
 }
@@ -141,21 +141,19 @@ impl const Default for CelsiusTemp {
 
 impl const From<ValidEcTemp> for KelvinTemp {
     fn from(ec_temp: ValidEcTemp) -> Self {
-        KelvinTemp(u16::from(ec_temp.0) + EC_TEMP_SENSOR_OFFSET)
+        Self(u16::from(ec_temp.0) + EC_TEMP_SENSOR_OFFSET)
     }
 }
 
 impl const From<KelvinTemp> for CelsiusTemp {
     fn from(kelvin_temp: KelvinTemp) -> Self {
-        CelsiusTemp(kelvin_temp.0.cast_signed() - KELVIN_CELSIUS_OFFSET.cast_signed())
+        Self(kelvin_temp.0.cast_signed() - KELVIN_CELSIUS_OFFSET.cast_signed())
     }
 }
 
 impl const From<ValidEcTemp> for CelsiusTemp {
     fn from(ec_temp: ValidEcTemp) -> Self {
-        CelsiusTemp(
-            u16::from(ec_temp.0).cast_signed() - EC_TEMP_SENSOR_OFFSET_CELSIUS.cast_signed(),
-        )
+        Self(u16::from(ec_temp.0).cast_signed() - EC_TEMP_SENSOR_OFFSET_CELSIUS.cast_signed())
     }
 }
 

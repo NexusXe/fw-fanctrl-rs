@@ -249,13 +249,13 @@ pub(super) fn generate_fan_curve_lut_dyn(points: &[(u8, u8)]) -> Vec<u8> {
                 let t = (FanCurveFloat::from(x) - FanCurveFloat::from(p0.0)) / dx;
                 let t2 = t * t;
                 let t3 = t2 * t;
-                let h00 = 2.0 * t3 - 3.0 * t2 + 1.0;
-                let h10 = t3 - 2.0 * t2 + t;
-                let h01 = -2.0 * t3 + 3.0 * t2;
+                let h00 = 2.0f64.mul_add(t3, -(3.0 * t2)) + 1.0;
+                let h10 = 2.0f64.mul_add(-t2, t3) + t;
+                let h01 = (-2.0f64).mul_add(t3, 3.0 * t2);
                 let h11 = t3 - t2;
                 let y0 = FanCurveFloat::from(p0.1);
                 let y1 = FanCurveFloat::from(p1.1);
-                let y_f = h00 * y0 + h01 * y1 + h10 * m0 * dx + h11 * m1 * dx;
+                let y_f = (h11 * m1).mul_add(dx, (h10 * m0).mul_add(dx, h00 * y0 + h01 * y1));
                 y_f.round().clamp(0.0, 100.0) as u8
             }
         })

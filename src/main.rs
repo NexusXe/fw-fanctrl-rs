@@ -7,7 +7,8 @@
 #![feature(const_try)]
 #![feature(portable_simd)]
 #![allow(incomplete_features)]
-#![warn(clippy::pedantic)]
+#![warn(clippy::nursery)]
+#![allow(clippy::redundant_pub_crate)]
 #![allow(clippy::cast_possible_truncation)]
 
 pub(crate) mod common;

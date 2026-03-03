@@ -86,9 +86,9 @@ fn squash_curvedef(file: File) -> Result<ParsedCurve, CurveParseError> {
         // convert both no next line or parse error into CurveParseError
         let temp = parts
             .next()
-            .ok_or(CurveParseError::CurveDefFormatError(format!(
-                "Missing temperature on line {i}"
-            )))
+            .ok_or_else(|| {
+                CurveParseError::CurveDefFormatError(format!("Missing temperature on line {i}"))
+            })
             .and_then(|s| {
                 s.trim().parse::<i16>().map_err(|_| {
                     CurveParseError::CurveDefFormatError(format!("Invalid temperature on line {i}"))
@@ -110,9 +110,7 @@ fn squash_curvedef(file: File) -> Result<ParsedCurve, CurveParseError> {
 
         let pwm = parts
             .next()
-            .ok_or(CurveParseError::CurveDefFormatError(format!(
-                "Missing PWM on line {i}"
-            )))
+            .ok_or_else(|| CurveParseError::CurveDefFormatError(format!("Missing PWM on line {i}")))
             .and_then(|s| {
                 s.trim().parse::<u8>().map_err(|_| {
                     CurveParseError::CurveDefFormatError(format!("Invalid PWM on line {i}"))
@@ -143,9 +141,9 @@ fn squash_curvedef(file: File) -> Result<ParsedCurve, CurveParseError> {
         ));
     }
     Ok(ParsedCurve {
-        name: name.ok_or(CurveParseError::CurveDefFormatError(
-            "No name found... somehow".to_string(),
-        ))?,
+        name: name.ok_or_else(|| {
+            CurveParseError::CurveDefFormatError("No name found... somehow".to_string())
+        })?,
         points,
         signature,
     })
