@@ -1,12 +1,12 @@
 [package]
 name = "fw-fanctrl-rs"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 license = "AGPL-3.0-or-later"
 
 [features]
 plot = ["dep:plotters", "dep:image", "dep:icy_sixel", "nix/term"]
-plugin = ["nix/time"]
+plugin = ["nix/time", "dep:libloading"]
 default = ["plugin"]
 
 [dependencies]
@@ -36,6 +36,7 @@ xxhash-rust = { version = "0.8.15", default-features = false, features = [
     "const_xxh3",
     "xxh3",
 ] }
+libloading = { version = "0.9", optional = true }
 
 [profile.release]
 opt-level = 3

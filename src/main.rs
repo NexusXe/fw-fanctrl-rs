@@ -20,12 +20,19 @@ mod temp;
 
 use clap::{CommandFactory, Parser};
 use serde::Deserialize;
-use std::{fs, path::Path, sync::OnceLock};
+use std::{
+    fs,
+    num::NonZeroU64,
+    path::{Path, PathBuf},
+    sync::OnceLock,
+};
 
 #[derive(Deserialize)]
 struct Config {
     default_curve: String,
     poll_interval_ms: u64,
+    #[allow(dead_code)] // only used when plugin feature is enabled
+    plugin_path: Option<String>,
 }
 
 const DEFAULT_CONFIG_PATH: &str = "/etc/fw-fanctrl-rs/config.toml";
@@ -97,9 +104,9 @@ struct Args {
     daemon: bool,
 
     /// Sleep duration in milliseconds between checks
-    /// Default: 1000
-    #[arg(short = 's', long, default_value = "1000")]
-    sleep_millis: u64,
+    /// Default: 1000ms, or config file's poll_interval_ms
+    #[arg(short = 's', long)]
+    sleep_millis: Option<NonZeroU64>,
 
     /// Check temps and set fans to match curve once
     #[arg(short = 'O', long)]
@@ -111,8 +118,8 @@ struct Args {
 
     /// Fan curve profile to use
     /// Default behavior: if /tmp/fw-fanctrl-rs.use-once.tmp exists, use it, otherwise use "default"
-    #[arg(short = 'p', long, default_value = "default-or-use-once")]
-    profile: String,
+    #[arg(short = 'p', long)]
+    profile: Option<String>,
 
     /// Generate shell completions
     #[arg(long, value_enum)]
@@ -209,11 +216,14 @@ struct Args {
     /// (Try to) force kitty output
     #[arg(long, requires("plot"))]
     force_kitty: bool,
+
+    #[arg(short = 'e', long, requires("daemon"))]
+    plugin: Option<String>,
 }
 
 #[allow(clippy::too_many_lines)] // too bad!
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut args = Args::parse();
+    let args = Args::parse();
     if args.quiet {
         QUIET.set(true).unwrap();
     } else if args.verbose {
@@ -221,7 +231,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         VERBOSE.set(true).unwrap();
     }
 
-    let mut config_default = None;
+    #[cfg(not(feature = "plugin"))]
+    if args.plugin.is_some() {
+        return Err("[ERROR]: fw-fanctrl-rs was not built with plugin support.".into());
+    }
 
     let mut profiles = fan_curve::curve_parsing::get_all_external_curves();
     profiles.extend(fan_curve::BUILTIN_PROFILES.iter().cloned());
@@ -234,6 +247,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
+    let mut config_default = None;
+    let mut config_sleep_millis: Option<NonZeroU64> = None;
+    #[allow(unused_mut)] // used by plugins
+    let mut config_plugin: Option<String> = None;
+
     match load_config(&args.config) {
         Ok(config) => {
             infov!("Loaded config from {}", args.config);
@@ -242,30 +260,56 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "    With default profile: {}",
                 config_default.as_ref().unwrap()
             );
-            args.sleep_millis = config.poll_interval_ms;
-            infov!("    With poll interval: {}ms", args.sleep_millis);
+            config_sleep_millis = Some(
+                NonZeroU64::new(config.poll_interval_ms)
+                    .expect("[ERROR]: Config cannot have 0ms poll interval"),
+            );
+            infov!("    With poll interval: {}ms", config_sleep_millis.unwrap());
+            #[cfg(feature = "plugin")]
+            if let Some(plugin_path) = config.plugin_path {
+                config_plugin = Some(plugin_path);
+                infov!("    With plugin: {}", config_plugin.as_ref().unwrap());
+            }
         }
         Err(e) => {
             warn!("Failed to load config: {e}");
         }
     }
 
+    let sleep_millis: NonZeroU64 = args
+        .sleep_millis
+        .or(config_sleep_millis)
+        .unwrap_or_else(|| NonZeroU64::new(1000).unwrap());
+
+    let plugin_path = args.plugin.or(config_plugin).map(PathBuf::from);
+    let plugin: Option<&PathBuf> = plugin_path.as_ref();
+
     let config_default = config_default.unwrap_or_else(|| "default".to_string());
 
-    if args.profile == "default-or-use-once" && args.r#use.is_none() && args.use_default.is_none() {
-        let use_once_path = Path::new(USE_ONCE_PATH);
-        if use_once_path.exists() {
-            infov!("Use-once file found, using profile from file.");
-            args.profile = std::fs::read_to_string(use_once_path)?;
-            // remove the use-once file
-            std::fs::remove_file(use_once_path)?;
-        } else {
-            infov!("No use-once file found, using default profile.");
-            args.profile = config_default;
-        }
-    } else {
-        infov!("Using profile from command line: {}", args.profile);
-    }
+    let profile_name = args.profile.as_ref().map_or_else(
+        || {
+            let use_once_path = Path::new(USE_ONCE_PATH);
+            if use_once_path.exists() {
+                infov!("Use-once file found, using profile from file.");
+                let p = match std::fs::read_to_string(use_once_path) {
+                    Ok(content) => content.trim().to_string(),
+                    Err(e) => {
+                        warn!("Failed to read use-once file: {}", e);
+                        "default".to_string()
+                    }
+                };
+                let _ = std::fs::remove_file(use_once_path);
+                p
+            } else {
+                infov!("No use-once file found, using profile from config.");
+                config_default
+            }
+        },
+        |p| {
+            infov!("Using profile from command line: {}", p);
+            p.clone()
+        },
+    );
 
     if let Some(shell) = args.print_completions {
         let mut cmd = Args::command();
@@ -273,9 +317,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
-    let profile = fan_curve::get_profile_by_name(&args.profile, &profiles)
+    let profile = fan_curve::get_profile_by_name(&profile_name, &profiles)
         .unwrap_or_else(|| {
-            warn!("Profile '{}' not found, using default.", args.profile);
+            warn!("Profile '{}' not found, using default.", profile_name);
             fan_curve::get_profile_by_name("default", &profiles).expect("Default profile not found")
         })
         .to_owned();
@@ -308,7 +352,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         fans::set_duty(speed)?;
         println!("[OUT]: {:}°C: {speed:3}%", max_temp.to_celsius().0);
     } else if args.daemon {
-        daemon::run_daemon(&profile, &args)?;
+        daemon::run_daemon(&profile, sleep_millis, plugin)?;
     } else if args.curve {
         println!("[OUT]: {profile}");
         // don't prefix with [OUT] for the CSV

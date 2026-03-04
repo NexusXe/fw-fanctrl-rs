@@ -91,6 +91,7 @@ impl std::fmt::Display for EcTempSensorError {
 
 impl std::error::Error for EcTempSensorError {}
 
+#[repr(transparent)]
 #[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd)]
 pub(crate) struct UnvalidatedEcTemp(pub(crate) u8);
 
@@ -99,6 +100,11 @@ impl UnvalidatedEcTemp {
         let valid: ValidEcTemp =
             std::convert::Into::<Result<ValidEcTemp, EcTempSensorError>>::into(self)?;
         Ok(valid.into())
+    }
+
+    #[allow(dead_code)] // used by plugins
+    pub(crate) const fn validate(self) -> Result<ValidEcTemp, EcTempSensorError> {
+        self.into()
     }
 }
 

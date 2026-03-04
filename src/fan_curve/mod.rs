@@ -14,7 +14,7 @@ mod curve_lut_gen;
 use curve_lut_gen::generate_fan_curve_lut;
 
 #[cfg(feature = "plugin")]
-mod plugins;
+pub(crate) mod plugins;
 
 /// A fan curve profile, either built-in or user-defined.
 #[derive(Clone)]
