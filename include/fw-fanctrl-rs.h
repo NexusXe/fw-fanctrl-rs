@@ -93,11 +93,19 @@ static inline PluginDecision make_set_speed(uint8_t speed, uint16_t delay) {
       .run_again_in = delay};
 }
 
+// Helper for getting a value from the current curve
 static inline PluginDecision make_curve_speed(uint8_t temp, uint16_t delay) {
   return (PluginDecision){.value = {.tag = DECISION_VALUE_GET_SPEED_FROM_CURVE,
                                     .temperature = temp},
                           .run_again_in = delay};
 }
+
+// Constructs a PluginDecision that will cause the host to disable the plugin.
+#define MAKE_ERROR_SPEED(value)                                                \
+  ({                                                                           \
+    _Static_assert((value) > 100, "Error speed must be > 100");                \
+    make_set_speed(255, 1);                                                    \
+  })
 
 // Helper for getting a value from the plugin state
 static inline bool get_state(const PluginCallData *data, const char *key,
@@ -108,7 +116,7 @@ static inline bool get_state(const PluginCallData *data, const char *key,
 }
 
 #define GET_STATE(data_ptr, key, out_ptr)                                      \
-  get_state((data_ptr), (key), (out_ptr), sizeof(*(out_ptr)))
+  get_state((data_ptr), (key), (out_ptr), sizeof(*(out_ ptr)))
 
 #define SET_STATE(data_ptr, key, value)                                        \
   (data_ptr)->state->set((key), (const uint8_t *)&(value), sizeof(value))

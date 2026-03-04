@@ -44,7 +44,7 @@ get_decision(const PluginCallData *data) {
   // 100 as an indication of error. The host will disable the plugin and rely
   // directly on the LUT.
   if (num_sensors == 0 || data->ancillary.highest_temp == 0) {
-    return make_set_speed(255, run_again_in);
+    return MAKE_ERROR_SPEED(255);
   }
 
   flip_flop = !flip_flop;
