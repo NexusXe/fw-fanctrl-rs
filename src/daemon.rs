@@ -41,7 +41,7 @@ fn init_plugin_fn(plugin: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let func = unsafe {
         lib.get(b"get_decision")
             .map(|f| *f)
-            .expect("[ERROR]: Could not find C function get_decision in plugin")
+            .expect("Could not find C function get_decision in plugin")
     };
     PLUGIN_FN
         .set(func)
@@ -63,7 +63,7 @@ pub(super) fn run_daemon(
     ctrlc::set_handler(move || {
         r.store(false, Ordering::SeqCst);
     })
-    .expect("[ERROR]: Error setting Ctrl-C handler");
+    .expect("Error setting Ctrl-C handler");
 
     info!(
         "Starting daemon with profile \"{}\". Using {:}ms sleep.",
@@ -176,23 +176,40 @@ pub(super) fn restart_daemon<const NEW_DEFAULT: bool>(
 
     // ensure the new curve exists in either the built-in profiles or external curves
     if fan_curve::get_profile_by_name(new_curve, profiles).is_none() {
-        return Err(format!("[ERROR]: Could not find curve \"{new_curve}\".").into());
+        return Err(format!("Could not find curve \"{new_curve}\".").into());
     }
 
     if NEW_DEFAULT {
         // open the default config file and replace the line that specifies the default curve
         let config = std::fs::read_to_string(DEFAULT_CONFIG_PATH)?;
-        let config = config.replace(
-            "default_curve = \"default\"",
-            &format!("default_curve = \"{new_curve}\" # Set by fw-fanctrl-rs --use-default"),
-        );
+        let mut new_config = String::with_capacity(config.len());
+        for line in config.lines() {
+            if line.trim_start().starts_with("default_curve") {
+                new_config.push_str(&format!(
+                    "default_curve = \"{new_curve}\" # Set by fw-fanctrl-rs --use-default\n"
+                ));
+            } else {
+                new_config.push_str(line);
+                new_config.push('\n');
+            }
+        }
+        let config = new_config;
+        infov!("Trying to write new curve {new_curve} to {DEFAULT_CONFIG_PATH}");
         match std::fs::write(DEFAULT_CONFIG_PATH, config) {
-            Ok(()) => info!("Set \"{new_curve}\" as the new default curve."),
+            Ok(()) => {
+                // verify the file was written correctly
+                let config = std::fs::read_to_string(DEFAULT_CONFIG_PATH)?;
+                if config.contains(&format!("default_curve = \"{new_curve}\"")) {
+                    info!("Set \"{new_curve}\" as the new default curve.")
+                } else {
+                    return Err(format!("Failed to set \"{new_curve}\" as the new default curve. The file was not updated correctly.").into());
+                }
+            }
             Err(e) => {
                 eprintln!("[ERROR]: Failed to set \"{new_curve}\" as the new default curve.");
                 match e.kind() {
                     std::io::ErrorKind::PermissionDenied => {
-                        return Err("[ERROR]: Permission denied. Are you running as root?".into());
+                        return Err("Permission denied. Are you running as root?".into());
                     }
                     _ => return Err(e.to_string().into()),
                 }
@@ -206,7 +223,7 @@ pub(super) fn restart_daemon<const NEW_DEFAULT: bool>(
                 eprintln!("[ERROR]: Failed to set \"{new_curve}\" as the curve to use once.");
                 match e.kind() {
                     std::io::ErrorKind::PermissionDenied => {
-                        return Err("[ERROR]: Permission denied. Are you running as root?".into());
+                        return Err("Permission denied. Are you running as root?".into());
                     }
                     _ => return Err(e.to_string().into()),
                 }
@@ -214,15 +231,17 @@ pub(super) fn restart_daemon<const NEW_DEFAULT: bool>(
         }
     }
 
+    const SYSTEMCTL_RELOAD_COMMAND: &str = "try-restart";
+
     let status = Command::new("systemctl")
-        .arg("reload")
+        .arg(SYSTEMCTL_RELOAD_COMMAND)
         .arg(&service_name)
         .status()?;
 
     if status.success() {
-        info!("Daemon successfully reloaded.");
+        info!("Daemon successfully {SYSTEMCTL_RELOAD_COMMAND}ed.");
         Ok(())
     } else {
-        Err(format!("[ERROR]: Failed to reload daemon. It may not be running. Try checking: systemctl status {service_name}").into())
+        Err(format!("Failed to {SYSTEMCTL_RELOAD_COMMAND} daemon. It may not be running. Try checking: systemctl status {service_name}").into())
     }
 }

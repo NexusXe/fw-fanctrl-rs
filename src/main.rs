@@ -281,7 +281,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let sleep_millis: NonZeroU64 = args
         .sleep_millis
         .or(config_sleep_millis)
-        .unwrap_or_else(|| NonZeroU64::new(1000).unwrap());
+        .unwrap_or_else(|| NonZeroU64::new(1000).unwrap()); // unwrap is fine here since 1000 != 0
 
     let plugin_path = args.plugin.or(config_plugin).map(PathBuf::from);
     let plugin: Option<&PathBuf> = plugin_path.as_ref();
@@ -296,7 +296,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let p = match std::fs::read_to_string(use_once_path) {
                     Ok(content) => content.trim().to_string(),
                     Err(e) => {
-                        warn!("Failed to read use-once file: {}", e);
+                        warn!("Failed to read use-once file: {e}");
                         "default".to_string()
                     }
                 };
@@ -353,7 +353,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         fans::set_duty(speed)?;
         println!("[OUT]: {:}°C: {speed:3}%", max_temp.to_celsius().0);
     } else if args.daemon {
-        daemon::run_daemon(&profile, sleep_millis, plugin)?;
+        daemon::run_daemon(&profile, sleep_millis, plugin).map_err(|e| {
+            eprintln!("[ERROR]: {e}");
+            e
+        })?;
     } else if args.curve {
         println!("[OUT]: {profile}");
         // don't prefix with [OUT] for the CSV
