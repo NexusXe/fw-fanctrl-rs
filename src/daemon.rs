@@ -9,11 +9,10 @@ use std::{
 
 #[cfg(feature = "plugin")]
 use crate::{
-    fan_curve::plugins::{PluginFn, call_plugin},
-    infov, warn,
+    fan_curve::plugins::{PluginFn, call_plugin}, warn,
 };
 
-use crate::{temp, verbose};
+use crate::{temp, verbose, infov};
 
 #[cfg(feature = "plugin")]
 use std::sync::OnceLock;

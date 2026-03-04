@@ -17,7 +17,7 @@ use std::{
 const COLORS: [RGBColor; 7] = [BLACK, BLUE, CYAN, GREEN, MAGENTA, RED, YELLOW];
 const FONT_TO_USE: &str = "Noto Sans";
 const WIDTH: u32 = 1000;
-const HEIGHT: u32 = 800;
+const HEIGHT: u32 = 804; // multiple of 6 for sixel conversion
 
 #[derive(Debug, Default)]
 pub(crate) struct TerminalSupport {
