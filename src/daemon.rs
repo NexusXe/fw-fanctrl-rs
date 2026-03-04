@@ -1,3 +1,6 @@
+#[cfg(feature = "plugin")]
+use nix::time::{ClockId, clock_gettime};
+
 use crate::{DEFAULT_CONFIG_PATH, USE_ONCE_PATH, fan_curve, fans, info};
 use std::{
     num::NonZeroU64,
@@ -6,9 +9,11 @@ use std::{
 
 #[cfg(feature = "plugin")]
 use crate::{
+    infov, warn,
     fan_curve::plugins::{PluginFn, call_plugin},
-    infov, temp, verbose, warn,
 };
+
+use crate::{temp, verbose};
 
 #[cfg(feature = "plugin")]
 use std::sync::OnceLock;
@@ -74,7 +79,10 @@ pub(super) fn run_daemon(
     let mut bad_plugin: bool = false;
 
     #[cfg(feature = "plugin")]
+    let mut last_poll = clock_gettime(ClockId::CLOCK_MONOTONIC_COARSE)?;
+
     while running.load(Ordering::SeqCst) {
+        #[cfg(feature = "plugin")]
         let mut sleep_millis = sleep_millis;
         let max_temp = temp::get_max_temp()?;
         let lut_speed = profile.get_fan_speed(max_temp);
@@ -88,6 +96,7 @@ pub(super) fn run_daemon(
                         *PLUGIN_FN.get().ok_or("Plugin not initialized")?,
                         max_temp,
                         lut_speed,
+                        last_poll,
                     ) {
                         Ok(decision) => {
                             if let Some(x) = decision.run_again_in {
@@ -137,6 +146,11 @@ pub(super) fn run_daemon(
         fans::set_duty(speed)?;
         if verbose() {
             info!("{:}°C: {speed:3}%", max_temp.to_celsius().0);
+        }
+
+        #[cfg(feature = "plugin")]
+        {   
+            last_poll = clock_gettime(ClockId::CLOCK_MONOTONIC_COARSE)?;
         }
         std::thread::sleep(std::time::Duration::from_millis(sleep_millis.get()));
     }

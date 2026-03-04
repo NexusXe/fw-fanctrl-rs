@@ -41,6 +41,7 @@ typedef struct {
 
 // Ancillary information provided to the plugin.
 typedef struct {
+  uint16_t time_since_last_poll_ms;
   uint8_t highest_temp;
   uint8_t num_sensors;
   uint8_t lut_speed;

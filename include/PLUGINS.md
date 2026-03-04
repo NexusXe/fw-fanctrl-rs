@@ -1,4 +1,4 @@
-# Developing Plugins for fw-fanctrl-rs
+#Developing Plugins for fw - fanctrl - rs
 
 `fw-fanctrl-rs` supports extending fan control logic using C-ABI compatible shared object (`.so`) plugins. By providing a compiled library that implements a specific interface, `fw-fanctrl-rs` will delegate its fan control decisions to your code on every polling interval.
 
@@ -20,35 +20,38 @@ Here's a minimal example:
 
 __attribute__((visibility("default"))) PluginDecision
 get_decision(const PluginCallData *data) {
-    // If the highest temperature across all sensors is above 80°C, set the fan to 100%
-    if (data->ancillary.highest_temp >= 80) {
-        return make_set_speed(100, 200); // 100% speed, poll again in 200ms
-    }
+  // If the highest temperature across all sensors is above 80°C, set the fan to
+  // 100%
+  if (data->ancillary.highest_temp >= 80) {
+    return make_set_speed(100, 200); // 100% speed, poll again in 200ms
+  }
 
-    // Otherwise, redirect to the normal active fan curve, evaluating as if the highest temperature was 50°C
-    return make_curve_speed(50, 500); // Poll again in 500ms
+  // Otherwise, redirect to the normal active fan curve, evaluating as if the
+  // highest temperature was 50°C
+  return make_curve_speed(50, 500); // Poll again in 500ms
 }
 ```
 
-Compile it with:
-```sh
-gcc -shared -fPIC -o my_plugin.so my_plugin.c
+    Compile it with :
+```sh gcc -
+    shared - fPIC -
+    o my_plugin.so my_plugin
+        .c
+``` <br>
+
+    ##Interface The program passes the state of the system and
+        sensors via the `PluginCallData` struct to the `get_decision` function
+            upon every execution cycle.
+
+```c PluginDecision
+            get_decision(const PluginCallData *data);
 ```
-<br>
 
-## Interface
-The program passes the state of the system and sensors via the `PluginCallData` struct to the `get_decision` function upon every execution cycle.
+    ## #1. `PluginCallData`
 
-```c
-PluginDecision get_decision(const PluginCallData *data);
-```
+    This structure contains all available information regarding the system's thermal state.
 
-### 1. `PluginCallData`
-
-This structure contains all available information regarding the system's thermal state.
-
-```c
-typedef struct {
+```c typedef struct {
   const EcResponseTempSensorGetInfo *sensors;
   const TempSensorVector *temps;
   const PluginStateMethods *state;
@@ -64,6 +67,7 @@ typedef struct {
 Provides summarized information:
 ```c
 typedef struct {
+  uint16_t time_since_last_poll_ms; // Time since last poll in milliseconds (coarse timing)
   uint8_t highest_temp; // The highest recorded temperature natively reported
   uint8_t num_sensors;  // The total number of registered sensors
   uint8_t lut_speed;    // The current Look-Up Table target speed
@@ -98,21 +102,21 @@ uint64_t my_counter = 0;
 
 // Try to grab existing state into `my_counter`
 if (GET_STATE(data, "call_count", &my_counter)) {
-    // Successfully found!
-    my_counter++;
+  // Successfully found!
+  my_counter++;
 } else {
-    // Key not found or mismatched size
-    my_counter = 1;
+  // Key not found or mismatched size
+  my_counter = 1;
 }
 
 // Persist the counter
 SET_STATE(data, "call_count", my_counter);
 ```
 
-The `PluginStateMethods` struct exposes the underlying operations as function pointers:
+    The `PluginStateMethods` struct exposes the underlying operations
+        as function pointers :
 
-```c
-typedef struct {
+```c typedef struct {
   bool (*set)(const char *key, const uint8_t *data, size_t len);
   PluginGetStatus (*get)(const char *key, uint8_t *buffer, size_t *buffer_len);
 } PluginStateMethods;

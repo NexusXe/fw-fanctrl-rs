@@ -8,6 +8,11 @@ use std::{
     time::{Duration, Instant},
 };
 
+use nix::{
+    sys::time::TimeSpec,
+    time::{ClockId, clock_gettime},
+};
+
 use crate::{
     infov,
     temp::{
@@ -206,6 +211,7 @@ static STATE: PluginStateMethods = PluginStateMethods {
 
 #[repr(C)]
 pub(crate) struct AncillaryInfo {
+    time_since_last_poll_ms: u16,
     highest_temp: ValidEcTemp,
     num_sensors: u8,
     lut_speed: u8,
@@ -246,17 +252,24 @@ pub(crate) fn call_plugin(
     plugin_fn: PluginFn,
     highest_temp: ValidEcTemp,
     lut_speed: u8,
+    last_poll: TimeSpec,
 ) -> Result<ValidatedDecision, Box<dyn std::error::Error>> {
     let readings = get_temperatures_v()?;
 
+    let readings_ptr = &raw const readings;
+    let sensors_ptr = ALL_SENSORS.as_ptr();
+
+    let now = Duration::from(clock_gettime(ClockId::CLOCK_MONOTONIC_COARSE)?);
+    let last_poll = Duration::from(last_poll);
+
+    let time_since_last_poll_ms = (now - last_poll).as_millis() as u16;
+
     let ancillary_info = AncillaryInfo {
+        time_since_last_poll_ms,
         highest_temp,
         num_sensors: *NUM_TEMP_SENSORS,
         lut_speed,
     };
-
-    let readings_ptr = &raw const readings;
-    let sensors_ptr = ALL_SENSORS.as_ptr();
 
     let call_data = PluginCallData {
         sensors: sensors_ptr,

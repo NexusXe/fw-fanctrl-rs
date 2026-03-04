@@ -26,6 +26,9 @@ get_decision(const PluginCallData *data) {
     call_count = 1; // Default if not found or size mismatch
   }
 
+  printf("[PLUGIN]: Time since last poll: %dms\n",
+         data->ancillary.time_since_last_poll_ms);
+
   // Save the new count back to the persistent state
   SET_STATE(data, counter_key, call_count);
 
