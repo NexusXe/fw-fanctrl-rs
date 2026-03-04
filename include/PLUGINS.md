@@ -2,7 +2,7 @@
 
 `fw-fanctrl-rs` supports extending fan control logic using C-ABI compatible shared object (`.so`) plugins. By providing a compiled library that implements a specific interface, `fw-fanctrl-rs` will delegate its fan control decisions to your code on every polling interval.
 
-This document explains the C interface provided in [`src/fan_curve/plugins.rs`](src/fan_curve/plugins.rs) and the companion C headers in [`include/fw-fanctrl-rs.h`](include/fw-fanctrl-rs.h).
+This document explains the C interface provided in [`plugins.rs`](/src/fan_curve/plugins.rs) and the companion C headers in [`fw-fanctrl-rs.h`](fw-fanctrl-rs.h).
 
 ---
 
