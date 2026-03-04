@@ -1,3 +1,7 @@
+//! Methods in this module are optimzied for size, since they are only called
+//! once at runtime and otherwise would take up a non-insignificant amount of
+//! space in the binary.
+
 use crate::{
     fan_curve::FanProfile,
     info, infov,
@@ -13,11 +17,9 @@ use std::{
     path::Path,
 };
 
-use std::collections::HashMap;
-
 const COLORS: [RGBColor; 7] = [BLACK, BLUE, CYAN, GREEN, MAGENTA, RED, YELLOW];
 const FONT_TO_USE: &str = "Noto Sans";
-const WIDTH: u32 = 1000;
+const WIDTH: u32 = 1024; // power of 2 for no reason in particular
 const HEIGHT: u32 = 804; // multiple of 6 for sixel conversion
 
 #[derive(Debug, Default)]
@@ -27,6 +29,7 @@ pub(crate) struct TerminalSupport {
 }
 
 /// Queries the terminal for Sixel and Kitty graphics protocol support.
+#[optimize(size)]
 fn check_terminal_support() -> Result<TerminalSupport, Box<dyn std::error::Error>> {
     use nix::sys::termios::{LocalFlags, SetArg, tcgetattr, tcsetattr};
 
@@ -102,6 +105,7 @@ fn check_terminal_support() -> Result<TerminalSupport, Box<dyn std::error::Error
 
 /// plots the fan curves to a file and attempts to display them in the terminal
 #[allow(clippy::too_many_lines)] // too bad!
+#[optimize(size)]
 pub(super) fn plot_curves(
     to_file: &Path,
     profiles: &[FanProfile],
@@ -263,7 +267,7 @@ pub(super) fn plot_curves(
         kitty(&png_buf)?;
     }
     if using_sixel {
-        sixel(&raw_pixels, WIDTH, HEIGHT)?;
+        sixel(&raw_pixels)?;
     }
     if !using_kitty && !using_sixel {
         infov!("Terminal doesn't seem to support Sixel or Kitty graphics.");
@@ -276,6 +280,7 @@ pub(super) fn plot_curves(
 }
 
 /// Helper to send a PNG as Kitty graphics
+#[optimize(size)]
 fn kitty(png_bytes: &[u8]) -> io::Result<()> {
     use base64::{Engine as _, engine::general_purpose};
 
@@ -312,85 +317,218 @@ fn kitty(png_bytes: &[u8]) -> io::Result<()> {
     Ok(())
 }
 
-/// Helper to send RGB bytes as Sixel graphics
-fn sixel(rgb_bytes: &[u8], width: u32, height: u32) -> Result<(), Box<dyn std::error::Error>> {
-    debug_assert!(height.is_multiple_of(6));
-
-    let mut buffer = Vec::new();
-
-    write!(buffer, "\x1BPq")?;
-
-    // 6x6x6 color cube (216 colors total)
-    for i in 0..216 {
+// 6x6x6 color cube (216 colors total)
+const COLOR_CUBE_LEN: usize = {
+    let mut len = 0;
+    let mut i = 0;
+    while i < 216 {
         let r_pct = (i / 36) * 100 / 5;
         let g_pct = ((i / 6) % 6) * 100 / 5;
         let b_pct = (i % 6) * 100 / 5;
-        write!(buffer, "#{i};2;{r_pct};{g_pct};{b_pct}")?;
+
+        len += 1; // '#'
+        if i >= 100 {
+            len += 1;
+        }
+        if i >= 10 {
+            len += 1;
+        }
+        len += 1;
+
+        len += 3; // ";2;"
+
+        if r_pct >= 100 {
+            len += 1;
+        }
+        if r_pct >= 10 {
+            len += 1;
+        }
+        len += 1;
+
+        len += 1; // ';'
+
+        if g_pct >= 100 {
+            len += 1;
+        }
+        if g_pct >= 10 {
+            len += 1;
+        }
+        len += 1;
+
+        len += 1; // ';'
+
+        if b_pct >= 100 {
+            len += 1;
+        }
+        if b_pct >= 10 {
+            len += 1;
+        }
+        len += 1;
+
+        i += 1;
     }
+    len
+};
 
-    // Process the image in horizontal bands of 6 pixels
-    for band in 0..(height / 6) {
-        // Map of: color_index -> Vector of sixel characters for this band
-        let mut color_to_sixels: HashMap<usize, Vec<u8>> = HashMap::new();
+static COLOR_CUBE_DATA: [u8; COLOR_CUBE_LEN] = {
+    let mut buf = [0; COLOR_CUBE_LEN];
+    let mut idx = 0;
+    let mut i = 0;
+    while i < 216 {
+        let r_pct = (i / 36) * 100 / 5;
+        let g_pct = ((i / 6) % 6) * 100 / 5;
+        let b_pct = (i % 6) * 100 / 5;
 
-        for x in 0..width {
-            let mut col_colors = HashMap::new();
+        buf[idx] = b'#';
+        idx += 1;
+
+        if i >= 100 {
+            buf[idx] = b'0' + (i / 100) as u8;
+            idx += 1;
+        }
+        if i >= 10 {
+            buf[idx] = b'0' + ((i / 10) % 10) as u8;
+            idx += 1;
+        }
+        buf[idx] = b'0' + (i % 10) as u8;
+        idx += 1;
+
+        buf[idx] = b';';
+        idx += 1;
+        buf[idx] = b'2';
+        idx += 1;
+        buf[idx] = b';';
+        idx += 1;
+
+        if r_pct >= 100 {
+            buf[idx] = b'0' + (r_pct / 100) as u8;
+            idx += 1;
+        }
+        if r_pct >= 10 {
+            buf[idx] = b'0' + ((r_pct / 10) % 10) as u8;
+            idx += 1;
+        }
+        buf[idx] = b'0' + (r_pct % 10) as u8;
+        idx += 1;
+
+        buf[idx] = b';';
+        idx += 1;
+
+        if g_pct >= 100 {
+            buf[idx] = b'0' + (g_pct / 100) as u8;
+            idx += 1;
+        }
+        if g_pct >= 10 {
+            buf[idx] = b'0' + ((g_pct / 10) % 10) as u8;
+            idx += 1;
+        }
+        buf[idx] = b'0' + (g_pct % 10) as u8;
+        idx += 1;
+
+        buf[idx] = b';';
+        idx += 1;
+
+        if b_pct >= 100 {
+            buf[idx] = b'0' + (b_pct / 100) as u8;
+            idx += 1;
+        }
+        if b_pct >= 10 {
+            buf[idx] = b'0' + ((b_pct / 10) % 10) as u8;
+            idx += 1;
+        }
+        buf[idx] = b'0' + (b_pct % 10) as u8;
+        idx += 1;
+
+        i += 1;
+    }
+    buf
+};
+
+/// Helper to send RGB bytes as Sixel graphics
+#[optimize(size)] // otherwise we get 500 vmovups instructions if targeting AVX-512 lol
+fn sixel(rgb_bytes: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
+    debug_assert!(HEIGHT.is_multiple_of(6));
+
+    let mut buffer = Vec::with_capacity(159774); // size of a general image + 3130 bytes for color cube
+
+    write!(buffer, "\x1BPq")?;
+
+    buffer.write_all(&COLOR_CUBE_DATA)?;
+
+    // 1. PRE-ALLOCATE ONCE: Create 216 rows, each `WIDTH` long.
+    // We will reuse this single allocation for every band.
+    let mut color_to_sixels = [[63; WIDTH as usize]; 216];
+
+    for band in 0..(HEIGHT / 6) {
+        // Track which of the 216 colors actually appeared in this band
+        let mut active_colors = Vec::with_capacity(216);
+        let mut color_is_active = [false; 216];
+
+        for x in 0..WIDTH {
+            // 2. STACK ARRAY: Zero heap allocations. Lightning fast.
+            let mut col_colors = [0u8; 216];
+
+            // Keep track of which colors we touch in this specific column (max 6)
+            // so we don't have to loop over all 216 indexes later.
+            let mut used_in_col = [0usize; 6];
+            let mut col_color_count = 0;
 
             for y_offset in 0..6 {
                 let y = band * 6 + y_offset;
-                let idx = ((y * width + x) * 3) as usize;
+                let idx = ((y * WIDTH + x) * 3) as usize;
 
-                // Quantize 0-255 space to 0-5 space for the color cube
                 let r = (rgb_bytes[idx] as usize * 5) / 255;
                 let g = (rgb_bytes[idx + 1] as usize * 5) / 255;
                 let b = (rgb_bytes[idx + 2] as usize * 5) / 255;
                 let color_idx = r * 36 + g * 6 + b;
 
-                // Set the bit corresponding to the current vertical pixel (1 << 0 to 1 << 5)
-                *col_colors.entry(color_idx).or_insert(0) |= 1 << y_offset;
+                // If this is the first time seeing this color in this column, record it
+                if col_colors[color_idx] == 0 {
+                    used_in_col[col_color_count] = color_idx;
+                    col_color_count += 1;
+                }
+
+                col_colors[color_idx] |= 1 << y_offset;
             }
 
-            // Convert bitmasks to Sixel ASCII characters
-            for (color_idx, sixel_val) in col_colors {
-                // Initialize a row filled with '?' (ASCII 63, which means empty/transparent)
-                let row = color_to_sixels
-                    .entry(color_idx)
-                    .or_insert_with(|| vec![63; width as usize]);
-                row[x as usize] = 63 + sixel_val;
+            // Apply the bitmasks to our pre-allocated rows
+            for color_idx in used_in_col.iter().take(col_color_count) {
+                color_to_sixels[*color_idx][x as usize] = 63 + col_colors[*color_idx];
+
+                // Mark this color as active for the band so we know to print it
+                if !color_is_active[*color_idx] {
+                    color_is_active[*color_idx] = true;
+                    active_colors.push(*color_idx);
+                }
             }
         }
 
-        // Output the band with run-length encoding
-        for (color_idx, row) in color_to_sixels {
-            // Trim trailing empty space ('?') to reduce payload size
+        // Output the band (Iterate ONLY over colors that actually exist in this band)
+        for color_idx in active_colors {
+            let row = &mut color_to_sixels[color_idx];
+
             if let Some(last_idx) = row.iter().rposition(|&c| c != 63) {
                 write!(buffer, "#{}", color_idx)?;
 
                 let mut current_char = row[0];
                 let mut count = 0;
 
-                // Iterate through the trimmed row
+                // (Your exact RLE loop goes here)
                 for &c in &row[..=last_idx] {
                     if c == current_char {
                         count += 1;
                     } else {
-                        // The character changed, so flush the previous sequence.
                         if count > 3 {
                             write!(buffer, "!{count}")?;
                             buffer.write_all(&[current_char])?;
                         } else {
-                            // If 3 or less, just write the characters sequentially
                             let chunk = vec![current_char; count];
                             buffer.write_all(&chunk)?;
                         }
-
-                        // Reset the tracker
                         current_char = c;
                         count = 1;
                     }
                 }
-
-                // Flush whatever is left in the buffer at the end of the row
                 if count > 3 {
                     write!(buffer, "!{count}")?;
                     buffer.write_all(&[current_char])?;
@@ -399,20 +537,26 @@ fn sixel(rgb_bytes: &[u8], width: u32, height: u32) -> Result<(), Box<dyn std::e
                     buffer.write_all(&chunk)?;
                 }
 
-                write!(buffer, "$")?; // Carriage return: reset to x=0 for the next color
+                write!(buffer, "$")?;
             }
+
+            // 3. THE RESET: Instantly fill the row back with '?' for the next band
+            row.fill(63);
         }
-        write!(buffer, "-")?; // Newline: move down to the next 6-pixel band
+        write!(buffer, "-")?;
     }
 
     // exit sixel mode
     writeln!(buffer, "\x1B\\")?;
 
+    let scaled_ratio = (buffer.len() * 10000 + (rgb_bytes.len() / 2)) / rgb_bytes.len();
+    let integer_part = scaled_ratio / 100;
+    let fractional_part = scaled_ratio % 100;
+
     infov!(
-        "Sending {:} bytes (from {:} bytes) as Sixel graphics; ratio: {:.2}%",
+        "Sending {:} bytes (from {:} bytes) as Sixel graphics; ratio: {integer_part:}.{fractional_part:02}%",
         buffer.len(),
         rgb_bytes.len(),
-        (buffer.len() as f32 / rgb_bytes.len() as f32) * 100.0
     );
     let mut stdout = io::stdout().lock();
     stdout.write_all(&buffer)?;
