@@ -326,7 +326,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     #[cfg(feature = "plot")]
     if args.plot {
-        mod plot;
+        use plot;
         let path = Path::new(&args.out);
         return plot::plot_curves(path, &profiles, args.force_sixel, args.force_kitty);
     }
