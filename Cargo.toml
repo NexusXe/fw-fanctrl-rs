@@ -5,7 +5,7 @@ edition = "2024"
 license = "AGPL-3.0-or-later"
 
 [features]
-plot = ["dep:plotters", "dep:image", "dep:icy_sixel", "nix/term"]
+plot = ["dep:plotters", "dep:image", "nix/term"]
 plugin = ["nix/time", "dep:libloading"]
 default = ["plugin"]
 
@@ -14,7 +14,6 @@ base64 = { version = "0.22.1", default-features = false, features = ["std"] }
 clap = { version = "4.5.60", features = ["derive"] }
 clap_complete = "4.5.66"
 ctrlc = "3.5.2"
-icy_sixel = { version = "0.5.0", optional = true }
 image = { version = "0.25.9", default-features = false, features = [
     "png",
     "jpeg",
