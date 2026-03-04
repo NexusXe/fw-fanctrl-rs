@@ -121,6 +121,8 @@ fn squash_curvedef(file: File) -> Result<ParsedCurve, CurveParseError> {
         points.push((ec_raw.0, pwm));
     }
 
+    points.shrink_to_fit();
+
     let points_slice = &points;
 
     let signature = xxh3_64(flatten_points(points_slice));
