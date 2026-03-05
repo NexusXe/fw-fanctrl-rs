@@ -13,10 +13,10 @@ static bool flip_flop = false;
  * The plugin entry point called by the `fw-fanctrl-rs` host.
  */
 __attribute__((visibility("default"))) PluginDecision
-get_decision(const PluginCallData* data) {
+get_decision(const PluginCallData *data) {
   /* Demonstration of using the persistent state storage:
   Keeping track of how many times this plugin has been called. */
-  const char* counter_key = "call_count";
+  const char *counter_key = "call_count";
   uint64_t call_count = 0;
 
   // Try to get the existing count
@@ -24,7 +24,7 @@ get_decision(const PluginCallData* data) {
     call_count++;
     printf("[PLUGIN]: Call #%llu\n", (unsigned long long)call_count);
   } else {
-    call_count = 1;  // Default if not found or size mismatch
+    call_count = 1; // Default if not found or size mismatch
   }
 
   printf("[PLUGIN]: Time since last poll: %dms\n",
