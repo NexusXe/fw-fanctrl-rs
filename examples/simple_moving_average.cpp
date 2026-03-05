@@ -14,7 +14,7 @@ struct MovingAverageState {
 
 __attribute__((visibility("default"))) PluginDecision
 get_decision(const PluginCallData *data) {
-  const char *state_key = "sma_history";
+  const char *state_key = "sma";
   MovingAverageState state = {0};
 
   // Attempt to load the state; if not found, state will remain 0-initialized
@@ -39,8 +39,8 @@ get_decision(const PluginCallData *data) {
   SET_STATE(data, state_key, state);
 
   // Calculate sum of history
-  uint32_t sum_temp = 0;
-  for (int i = 0; i < state.count; i++) {
+  uint16_t sum_temp = 0;
+  for (uint8_t i = 0; i < state.count; i++) {
     sum_temp += state.max_temps[i];
   }
 

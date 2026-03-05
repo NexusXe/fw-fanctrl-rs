@@ -121,6 +121,36 @@ static inline bool get_state(const PluginCallData *data, const char *key,
 #define SET_STATE(data_ptr, key, value)                                        \
   (data_ptr)->state->set((key), (const uint8_t *)&(value), sizeof(value))
 
+// Helper for converting EC temperature units to Kelvin
+static inline uint16_t ec_to_kelvin(uint8_t ec_temp) {
+  return (uint16_t)ec_temp - EC_TEMP_SENSOR_OFFSET;
+}
+
+// Helper for converting EC temperature units to Celsius
+static inline int16_t ec_to_celsius(uint8_t ec_temp) {
+  return ec_to_kelvin(ec_temp) - 273;
+}
+
+// Helper for converting Celcius to Kelvin
+static inline uint16_t celsius_to_kelvin(int16_t celsius) {
+  return (uint16_t)(celsius + 273);
+}
+
+// Helper for converting Kelvin to EC temperature units
+static inline uint8_t kelvin_to_ec(uint16_t kelvin) {
+  return (uint8_t)(kelvin + EC_TEMP_SENSOR_OFFSET);
+}
+
+// Helper for converting Kelvin to Celsius
+static inline int16_t kelvin_to_celsius(uint16_t kelvin) {
+  return kelvin - 273;
+}
+
+// Helper for converting Celsius to EC temperature units
+static inline uint8_t celsius_to_ec(int16_t celsius) {
+  return kelvin_to_ec(celsius_to_kelvin(celsius));
+}
+
 // The function signature that your plugin must implement and expose.
 PluginDecision get_decision(const PluginCallData *data);
 
