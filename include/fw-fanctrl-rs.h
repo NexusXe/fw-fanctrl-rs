@@ -116,7 +116,7 @@ static inline bool get_state(const PluginCallData *data, const char *key,
 }
 
 #define GET_STATE(data_ptr, key, out_ptr)                                      \
-  get_state((data_ptr), (key), (out_ptr), sizeof(*(out_ ptr)))
+  get_state((data_ptr), (key), (out_ptr), sizeof(*(out_ptr)))
 
 #define SET_STATE(data_ptr, key, value)                                        \
   (data_ptr)->state->set((key), (const uint8_t *)&(value), sizeof(value))
