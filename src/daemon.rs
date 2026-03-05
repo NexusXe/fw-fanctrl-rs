@@ -25,6 +25,7 @@ static PLUGIN_LIB: OnceLock<libloading::Library> = OnceLock::new();
 
 #[cfg(feature = "plugin")]
 fn init_plugin(plugin: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    info!("Loading plugin from {plugin:?}");
     let lib = unsafe { libloading::Library::new(plugin) }?;
     PLUGIN_LIB
         .set(lib)
