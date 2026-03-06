@@ -276,6 +276,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if let Some(plugin_path) = config.plugin_path {
                 config_plugin = Some(plugin_path);
                 infov!("    With plugin: {}", config_plugin.as_ref().unwrap());
+            } else {
+                infov!("    No plugin specified in config");
             }
         }
         Err(e) => {
