@@ -124,7 +124,7 @@ static inline bool get_state(const PluginCallData *data, const char *key,
 
 // Helper for converting EC temperature units to Kelvin
 static inline uint16_t ec_to_kelvin(uint8_t ec_temp) {
-  return (uint16_t)ec_temp - EC_TEMP_SENSOR_OFFSET;
+  return (uint16_t)ec_temp + EC_TEMP_SENSOR_OFFSET;
 }
 
 // Helper for converting EC temperature units to Celsius
@@ -139,7 +139,7 @@ static inline uint16_t celsius_to_kelvin(int16_t celsius) {
 
 // Helper for converting Kelvin to EC temperature units
 static inline uint8_t kelvin_to_ec(uint16_t kelvin) {
-  return (uint8_t)(kelvin + EC_TEMP_SENSOR_OFFSET);
+  return (uint8_t)(kelvin - EC_TEMP_SENSOR_OFFSET);
 }
 
 // Helper for converting Kelvin to Celsius
