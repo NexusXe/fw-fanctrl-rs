@@ -5,7 +5,7 @@ edition = "2024"
 license = "AGPL-3.0-or-later"
 
 [features]
-plot = ["dep:plotters", "dep:image", "nix/term"]
+plot = ["dep:plotters", "dep:image", "dep:flate2", "nix/term"]
 plugin = ["nix/time", "dep:libloading"]
 default = ["plugin", "plot"]
 
@@ -19,6 +19,7 @@ image = { version = "0.25.9", default-features = false, features = [
     "jpeg",
     "webp",
 ], optional = true }
+flate2 = { version = "1.1", default-features = false, features = ["zlib"], optional = true }
 nix = { version = "0.31", default-features = false, features = ["ioctl"] }
 plotters = { version = "0.3", default-features = false, features = [
     "bitmap_backend",
