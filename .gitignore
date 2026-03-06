@@ -7,3 +7,4 @@ rust-toolchain.toml
 
 *.so
 *.out
+examples/internal*
