@@ -313,9 +313,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     if let Some(shell) = args.print_completions {
-        let mut cmd = Args::command();
-        clap_complete::generate(shell, &mut cmd, "fw-fanctrl-rs", &mut std::io::stdout());
-        return Ok(());
+        print_completions(shell);
+        return Ok(()); // early exit
     }
 
     let profile = fan_curve::get_profile_by_name(&profile_name, &profiles)
@@ -327,8 +326,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     #[cfg(feature = "plot")]
     if args.plot {
-        let path = Path::new(&args.out);
-        return plot::plot_curves(path, &profiles, args.force_sixel, args.force_kitty);
+        return plot::plot_curves(
+            Path::new(&args.out),
+            &profiles,
+            args.force_sixel,
+            args.force_kitty,
+        );
     }
 
     // explicitly drop the rest of the profiles
@@ -344,20 +347,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             e
         })?;
     } else if args.curve {
-        println!("[OUT]: {profile}");
-        // don't prefix with [OUT] for the CSV
-        println!("Temperature (°C),PWM");
-        for temp in 0..=u8::MAX - 4 {
-            let temp = temp::ValidEcTemp(temp);
-            println!("{:},{:}", temp.to_celsius().0, profile.get_fan_speed(temp));
-        }
+        print_curve_csv(&profile);
     } else if args.total_lut_size {
-        let total_lut_size: usize = fan_curve::BUILTIN_PROFILES
-            .iter()
-            .map(|p| p.lut.len())
-            .sum();
-        println!("{total_lut_size}");
-        println!("{:}", std::mem::size_of::<fan_curve::FanProfile>());
+        total_lut_size();
     } else if args.list_external_curves {
         let curves = fan_curve::curve_parsing::get_all_external_curves();
         info!(
@@ -406,4 +398,28 @@ fn print_temps() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     Ok(())
+}
+
+fn print_curve_csv(profile: &crate::fan_curve::FanProfile) {
+    println!("[OUT]: {profile}");
+    // don't prefix with [OUT] for the CSV
+    println!("Temperature (°C),PWM");
+    for temp in 0..=u8::MAX - 4 {
+        let temp = temp::ValidEcTemp(temp);
+        println!("{:},{:}", temp.to_celsius().0, profile.get_fan_speed(temp));
+    }
+}
+
+fn total_lut_size() {
+    let total_lut_size: usize = fan_curve::BUILTIN_PROFILES
+        .iter()
+        .map(|p| p.lut.len())
+        .sum();
+    println!("{total_lut_size}");
+    println!("{:}", std::mem::size_of::<fan_curve::FanProfile>());
+}
+
+fn print_completions(shell: clap_complete::Shell) {
+    let mut cmd = Args::command();
+    clap_complete::generate(shell, &mut cmd, "fw-fanctrl-rs", &mut std::io::stdout());
 }
