@@ -107,17 +107,13 @@ struct Args {
     fan: Option<String>,
 
     /// Run as daemon
-    #[arg(short = 'd', long, conflicts_with = "once")]
+    #[arg(short = 'd', long)]
     daemon: bool,
 
     /// Sleep duration in milliseconds between checks
     /// Default: 1000ms, or config file's poll_interval_ms
     #[arg(short = 's', long)]
     sleep_millis: Option<NonZeroU64>,
-
-    /// Check temps and set fans to match curve once
-    #[arg(short = 'O', long)]
-    once: bool,
 
     /// Print fan curve in CSV format
     #[arg(long)]
@@ -147,7 +143,6 @@ struct Args {
     /// List external curves
     #[arg(
         long,
-        conflicts_with = "once",
         conflicts_with = "daemon",
         conflicts_with = "fan",
         conflicts_with = "temp",
@@ -164,7 +159,6 @@ struct Args {
     #[arg(
         short = 'u',
         long,
-        conflicts_with = "once",
         conflicts_with = "fan",
         conflicts_with = "temp",
         conflicts_with = "curve",
@@ -179,7 +173,6 @@ struct Args {
     #[arg(
         short = 'U',
         long,
-        conflicts_with = "once",
         conflicts_with = "fan",
         conflicts_with = "temp",
         conflicts_with = "curve",
@@ -194,7 +187,6 @@ struct Args {
     #[arg(
         short = 'P',
         long,
-        conflicts_with = "once",
         conflicts_with = "daemon",
         conflicts_with = "fan",
         conflicts_with = "temp",
@@ -345,20 +337,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if args.temp {
         print_temps()?;
     } else if let Some(val) = args.fan {
-        if val == "auto" {
-            fans::set_auto()?;
-            info!("Set auto fan control.");
-        } else {
-            let duty: u8 = val.parse::<u8>()?.clamp(0, 100);
-            fans::set_duty(duty)?;
-            info!("Set to {duty:}");
-        }
-    } else if args.once {
-        // check temps and set fans to match curve
-        let max_temp = temp::get_max_temp()?;
-        let speed = profile.get_fan_speed(max_temp);
-        fans::set_duty(speed)?;
-        println!("[OUT]: {:}°C: {speed:3}%", max_temp.to_celsius().0);
+        set_fan(&val)?;
     } else if args.daemon {
         daemon::run_daemon(&profile, sleep_millis, plugin).map_err(|e| {
             eprintln!("[ERROR]: {e}");
@@ -395,6 +374,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         cmd.print_help()?;
     }
 
+    Ok(())
+}
+
+fn set_fan(val: &str) -> Result<(), Box<dyn std::error::Error>> {
+    if val == "auto" {
+        fans::set_auto()?;
+        info!("Set auto fan control.");
+    } else {
+        let duty: u8 = val.parse::<u8>()?.clamp(0, 100);
+        fans::set_duty(duty)?;
+        info!("Set to {duty:}");
+    }
     Ok(())
 }
 
